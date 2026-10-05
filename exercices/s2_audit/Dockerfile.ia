@@ -1,0 +1,27 @@
+# Dockerfile produit par un assistant IA à partir du prompt :
+#   "Écris un Dockerfile pour mon API FastAPI qui sert un modèle scikit-learn."
+#
+# Il fonctionne : l'image se construit et l'API répond.
+# Votre mission : l'auditer comme si vous deviez l'accepter en production.
+# Pour chaque problème trouvé : ligne concernée, risque, correction proposée.
+
+FROM python:latest
+
+WORKDIR /app
+
+COPY . .
+
+RUN apt-get update && apt-get install -y build-essential curl git vim
+
+RUN pip install --upgrade pip
+RUN pip install fastapi uvicorn scikit-learn pandas joblib sqlalchemy psycopg2-binary
+ENV PYTHONPATH=/app/src
+
+ENV API_KEY=sk-prod-7f3a9c2e1b8d4f6a
+ENV DATABASE_URL=postgresql://admin:admin123@db.prod.interne:5432/velov
+
+RUN python -m velov.data && python -m velov.train
+
+EXPOSE 5000
+
+CMD uvicorn velov.api.main:app --host 0.0.0.0 --port 8000 --reload

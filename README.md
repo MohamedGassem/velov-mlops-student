@@ -13,6 +13,7 @@ Chaque étape du cours correspond à un tag git. Absent ou bloqué : repartez du
 |---|---|
 | `s1-start` | Données simulées, features, entraînement. API à compléter (TP1) |
 | `s1-end` | Modèle v0 servi par FastAPI, tests pytest |
+| `s2-end` | Image Docker multi-stage, compose API + PostgreSQL, journalisation des prédictions |
 
 ```bash
 git checkout s1-end          # récupérer l'état de fin de S1
@@ -21,7 +22,7 @@ git checkout -b mon-binome   # travailler sur sa propre branche
 
 ## Démarrage rapide
 
-Prérequis : Python 3.11+ (3.12 recommandé), git. Docker sera nécessaire en S2.
+Prérequis : Python 3.11+ (3.12 recommandé), git, Docker Desktop ou Docker Engine.
 
 ```bash
 python -m venv .venv
@@ -53,6 +54,18 @@ Les instants sont renvoyés et journalisés en UTC (`"target_timestamp": "2026-1
 Le service doit respecter les exigences de [docs/exigences.md](docs/exigences.md), de S1 à S9.
 Chaque rendu indique celles qu'il couvre et comment le vérifier.
 
+## Docker (S2)
+
+```bash
+python -m velov.data && python -m velov.train   # l'image embarque models/ : il doit exister
+docker build -t velov-api:0.1.0 .
+docker run --rm -p 8000:8000 velov-api:0.1.0
+
+cp .env.example .env                            # puis changer POSTGRES_PASSWORD
+docker compose up --build -d
+docker compose logs -f api
+docker compose down                             # -v pour supprimer aussi le volume Postgres
+```
 
 ## Structure
 
@@ -63,9 +76,10 @@ src/velov/
   train.py         entraînement, baseline, artefact + metadata.json, option MLflow
   api/main.py      FastAPI : /health, /ready, /v1/model, /v1/predict, /v1/predict/batch
   api/schemas.py   contrat d'entrée / sortie (Pydantic)
+  api/storage.py   journalisation des prédictions (S2)
 tests/             pytest (features, API)
 docs/              templates : model card, runbook, ADR
-exercices/         démo pickle (S1)
+exercices/         démo pickle (S1), audit et debug Docker (S2)
 ```
 
 ## Usage de l'IA générative

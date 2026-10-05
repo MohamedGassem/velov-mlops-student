@@ -12,6 +12,7 @@ Horodatage : les timestamps entrants doivent porter un fuseau ; ils sont normali
 
 Configuration (variables d'environnement, jamais en dur dans le code) :
     MODEL_DIR     dossier contenant model.joblib et metadata.json (défaut : models)
+    DATABASE_URL  optionnel ; si défini, chaque prédiction est journalisée (S2)
 
 Lancement :
     uvicorn velov.api.main:app --host 0.0.0.0 --port 8000
@@ -32,6 +33,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 
+from velov.api import storage
 from velov.api.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -45,7 +47,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(
 logger = logging.getLogger("velov.api")
 
 # État du service, rempli au démarrage.
-STATE: dict = {"model": None, "metadata": None}
+STATE: dict = {"model": None, "metadata": None, "engine": None}
 
 
 def load_model(model_dir: Path) -> tuple[object, dict]:
@@ -75,8 +77,15 @@ async def lifespan(app: FastAPI):
         # Le process démarre quand même : /health répond, /ready signale le problème.
         logger.exception("Échec du chargement du modèle depuis %s", model_dir)
 
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        try:
+            STATE["engine"] = storage.init(database_url)
+            logger.info("Journalisation des prédictions activée")
+        except Exception:
+            logger.exception("Base de données indisponible : journalisation désactivée")
     yield
-    STATE.update(model=None, metadata=None)
+    STATE.update(model=None, metadata=None, engine=None)
 
 
 app = FastAPI(
@@ -132,11 +141,25 @@ def _predict(items: list[PredictionRequest]) -> list[PredictionResponse]:
     ]
 
 
+def _log(items: list[PredictionRequest], responses: list[PredictionResponse]) -> None:
+    if STATE["engine"] is None:
+        return
+    try:
+        storage.log_predictions(STATE["engine"], items, responses)
+    except Exception:
+        # La journalisation ne doit jamais faire échouer une prédiction.
+        logger.exception("Échec de la journalisation des prédictions")
+
+
 @app.post("/v1/predict", response_model=PredictionResponse, tags=["model"])
 def predict(payload: PredictionRequest) -> PredictionResponse:
-    return _predict([payload])[0]
+    response = _predict([payload])
+    _log([payload], response)
+    return response[0]
 
 
 @app.post("/v1/predict/batch", response_model=BatchPredictionResponse, tags=["model"])
 def predict_batch(payload: BatchPredictionRequest) -> BatchPredictionResponse:
-    return BatchPredictionResponse(predictions=_predict(payload.items))
+    responses = _predict(payload.items)
+    _log(payload.items, responses)
+    return BatchPredictionResponse(predictions=responses)

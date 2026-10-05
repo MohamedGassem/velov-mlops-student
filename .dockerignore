@@ -1,0 +1,29 @@
+# Tout ce qui n'est pas nécessaire au build reste hors du contexte envoyé au daemon :
+# build plus rapide, image plus petite, pas de fuite de secrets ou de données.
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+
+# Secrets
+.env
+.env.*
+
+# Données brutes, suivi d'expériences, tests et supports
+data/
+mlflow.db
+mlruns/
+tests/
+docs/
+exercices/
+*.md
+
+# Fichiers Docker eux-mêmes
+Dockerfile*
+compose*.yaml
+.dockerignore
+
+# ATTENTION : models/ ne doit PAS figurer ici, l'image en a besoin.

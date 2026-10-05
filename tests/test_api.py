@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
 
 
 def test_health(client):
@@ -88,3 +89,15 @@ def test_tampered_model_is_not_loaded(model_dir, tmp_path, monkeypatch):
 
     with TestClient(app) as c:
         assert c.get("/ready").status_code == 503
+
+
+def test_predictions_are_logged_when_database_configured(model_dir, tmp_path, monkeypatch, valid_payload):
+    db_url = f"sqlite:///{tmp_path / 'preds.db'}"
+    monkeypatch.setenv("MODEL_DIR", str(model_dir))
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    from velov.api.main import app
+
+    with TestClient(app) as c:
+        assert c.post("/v1/predict", json=valid_payload).status_code == 200
+    with create_engine(db_url).connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM predictions")).scalar_one() == 1
