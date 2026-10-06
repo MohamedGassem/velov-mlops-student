@@ -4,8 +4,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 """
 
 from __future__ import annotations
+from datetime import UTC
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -21,13 +22,31 @@ class PredictionRequest(BaseModel):
     TODO 4 bis [Should] : normaliser timestamp en UTC
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
-
-    model_config = ConfigDict()
-
+    # TODO 3 : refuse tout champ non déclaré
+    model_config = ConfigDict(extra="forbid")
+    # TODO 1 + TODO 2 : les 6 champs typés, avec leurs bornes
     station_id: int = Field(..., description="Identifiant de la station")
-    # TODO : compléter
+    timestamp: AwareDatetime = Field(..., description="Instant de l'observation (avec fuseau)")
+    capacity: int = Field(..., gt=0, le=100, description="Nombre total de bornes")
+    bikes_available: int = Field(..., ge=0, description="Vélos disponibles")
+    temperature: float = Field(..., ge=-30, le=50, description="Température en °C")
+    is_raining: bool = Field(..., description="Pluie au moment de l'observation")
 
-
+    #TODO 4 [Must] : refuser bikes_available > capacity (indice : @model_validator(mode="after")).  cohérence métier — pas plus de vélos que de bornes
+    @model_validator(mode="after")
+    def check_bikes_le_capacity(self) -> "PredictionRequest":
+        if self.bikes_available > self.capacity:
+            raise ValueError(
+                f"bikes_available ({self.bikes_available}) "
+                f"ne peut pas dépasser capacity ({self.capacity})"
+            )
+        return self
+    
+    #TODO 4 bis [Should] : normaliser timestamp en UTC (indice : @field_validator("timestamp") et value.astimezone(UTC)).
+    @field_validator("timestamp")
+    @classmethod
+    def _to_utc(cls, value: AwareDatetime) -> AwareDatetime:
+        return value.astimezone(UTC)
 class PredictionResponse(BaseModel):
     station_id: int
     target_timestamp: AwareDatetime = Field(..., description="Instant prédit (t + 1 h)")

@@ -18,13 +18,15 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 
-from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
-from velov.features import FEATURES, add_features  # noqa: F401
+from velov.api.schemas import PredictionRequest, PredictionResponse
+from velov.features import FEATURES, add_features
 from velov.train import METADATA_FILENAME, sha256_of
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -61,16 +63,47 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifespan)
 
 
-# TODO 5 [Should] : GET /health -> {"status": "ok"}
+@app.get("/health")
+def health() -> dict:
+    """Liveness : le process répond. Ne dépend pas du modèle (TODO 5)."""
+    return {"status": "ok"}
 
 
-# TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
+@app.get("/ready")
+def ready() -> dict:
+    """Readiness : 200 si le modèle est chargé, 503 sinon (TODO 6)."""
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    return {"status": "ready", "model_version": STATE["metadata"]["model_version"]}
 
 
-# TODO 7 [Must] : POST /v1/predict
-#   - entrée : PredictionRequest ; sortie : PredictionResponse
-#   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES
-#   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h
-#     (l'instant porte son fuseau : le contrat l'a validé)
-#   - 503 si le modèle n'est pas chargé
-#   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest) -> PredictionResponse:
+    """Prédit le nombre de vélos disponibles à H+1 pour une station (TODO 7)."""
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    # Une seule ligne, avec les colonnes brutes attendues par add_features.
+    row = pd.DataFrame(
+        [
+            {
+                "station_id": request.station_id,
+                "timestamp": request.timestamp,
+                "capacity": request.capacity,
+                "bikes_available": request.bikes_available,
+                "temperature": request.temperature,
+                "is_raining": request.is_raining,
+            }
+        ]
+    )
+    # On réutilise add_features (même code qu'à l'entraînement) pour éviter le training-serving skew.
+    features = add_features(row)[FEATURES]
+    predicted = float(STATE["model"].predict(features)[0])
+    predicted = max(0.0, min(predicted, float(request.capacity)))  # borné entre 0 et capacity
+
+    return PredictionResponse(
+        station_id=request.station_id,
+        target_timestamp=request.timestamp + timedelta(hours=1),
+        predicted_bikes=predicted,
+        model_version=STATE["metadata"]["model_version"],
+    )
