@@ -50,5 +50,8 @@ def load() -> None:
 if __name__ == "__main__":
     actions = {"create": create, "inspect": inspect, "load": load}
     if len(sys.argv) != 2 or sys.argv[1] not in actions:
+        FakeModel = FakeModel
+        create()
+        load()
         sys.exit(f"Usage : python {Path(__file__).name} [create|inspect|load]")
     actions[sys.argv[1]]()
