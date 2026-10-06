@@ -1,0 +1,44 @@
+{
+  "model_name": "velov-availability",
+  "model_version": "0.1.0",
+  "trained_at": "2026-10-06T13:11:28+00:00",
+  "task": "Prédire le nombre de vélos disponibles à H+1 par station",
+  "input_columns": [
+    "station_id",
+    "timestamp",
+    "capacity",
+    "bikes_available",
+    "temperature",
+    "is_raining"
+  ],
+  "features": [
+    "station_id",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "capacity",
+    "bikes_available",
+    "occupancy_rate",
+    "temperature",
+    "is_raining"
+  ],
+  "target": "bikes_next_hour",
+  "metrics": {
+    "mae_model": 1.339,
+    "mae_baseline_persistence": 1.879,
+    "test_days": 14,
+    "n_train": 36460,
+    "n_test": 6720
+  },
+  "artifact": {
+    "file": "model.joblib",
+    "sha256": "842b0615d3484845c18dacabbfd97e9b4f46c91236244f6809e712a4fd132bb0"
+  },
+  "data_sha256": "d8efaead98fd81ae1c1287b406963032b33449ef8a4c445bc274337eec17a293",
+  "runtime": {
+    "python": "3.11.0",
+    "scikit-learn": "1.9.1",
+    "pandas": "3.0.2",
+    "numpy": "2.4.6"
+  }
+}
