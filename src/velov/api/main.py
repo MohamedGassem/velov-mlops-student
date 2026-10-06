@@ -103,9 +103,11 @@ def predict(request: PredictionRequest) -> PredictionResponse:
 
     # Renvoyer la réponse sous forme de PredictionResponse
     return PredictionResponse(
-        prediction=prediction_bounded,
+        station_id=request.station_id,
         target_timestamp=target_timestamp,
+        predicted_bikes=prediction_bounded,
         model_version=STATE["metadata"]["model_version"],
         )
 
-# IA utilisée : Gemini pour la gestion des codes d'erreurs (import HTTPException)
+# IA utilisée : 
+# Gemini pour la gestion des codes d'erreurs (import HTTPException) et pour la correction du format output
