@@ -5,7 +5,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from datetime import UTC, datetime
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -30,6 +32,11 @@ class PredictionRequest(BaseModel):
     bikes_available: int = Field(..., ge=0, description="Vélos disponibles à l'instant t")
     temperature: float = Field(..., ge=-30, le=50, description="Température en °C")
     is_raining: bool = Field(..., description="Pluie à l'instant t")
+
+    @field_validator("timestamp")
+    @classmethod
+    def timestamp_to_utc(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
 
     @model_validator(mode="after")
     def check_bikes_vs_capacity(self) -> PredictionRequest:
