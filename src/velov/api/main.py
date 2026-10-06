@@ -19,9 +19,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+import pandas as pd
 
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -67,10 +68,44 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
 
 
-# TODO 7 [Must] : POST /v1/predict
-#   - entrée : PredictionRequest ; sortie : PredictionResponse
-#   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES
-#   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h
+# TODO 7 [Must] : POST /v1/predict ✓
+#   - entrée : PredictionRequest ; sortie : PredictionResponse ✓
+#   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES ✓
+#   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h ✓
 #     (l'instant porte son fuseau : le contrat l'a validé)
-#   - 503 si le modèle n'est pas chargé
-#   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+#   - 503 si le modèle n'est pas chargé ✓
+#   Question : pourquoi importer add_features plutôt que recalculer les features ici ? ✓
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest) -> PredictionResponse:
+    # Verifier que le modèle est chargé
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    
+    # Construire un DataFrame à partir du contenu de la requête
+    df = pd.DataFrame([request.model_dump()])
+
+    # Utiliser la méthode de preprocessing packagée "add_features" pour extraire les features
+    df_features = add_features(df)
+    # Sélectionner uniquement les colonnes de features attendues par le modèle
+    X = df_features[FEATURES]
+    # Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+    # Précisément pour éviter le training-serving skew : 
+    # Le code de preprocessing reste l même en train et en production, donc les features sont cohérentes.
+
+    # Calculer la prédiction
+    prediction = float(STATE["model"].predict(X)[0])
+
+    # Borner la prédiction entre 0 et capacity
+    prediction_bounded = max(0.0, min(prediction, float(request.capacity)))
+
+    # Calculer le timestamp de la cible (timestamp + 1 heure)
+    target_timestamp = request.timestamp + pd.Timedelta(hours=1)
+
+    # Renvoyer la réponse sous forme de PredictionResponse
+    return PredictionResponse(
+        prediction=prediction_bounded,
+        target_timestamp=target_timestamp,
+        model_version=STATE["metadata"]["model_version"],
+        )
+
+# IA utilisée : Gemini pour la gestion des codes d'erreurs (import HTTPException)
