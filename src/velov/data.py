@@ -10,7 +10,7 @@ Schéma de sortie (une ligne par station et par heure) :
     station_id:int, timestamp:datetime64 en UTC, capacity:int, bikes_available:int,
     temperature:float (°C), is_raining:bool
 
-Convention horaire du projet : tous les instants sont stockés et échangés en UTC.
+Convention horaire dau projet : tous les instants sont stockés et échangés en UTC.
 Les usages, eux, suivent l'heure locale de Lyon (départs vers 8 h, retours vers 18 h) :
 les profils ci-dessous sont donc calculés en heure locale, puis l'instant est converti en UTC.
 
