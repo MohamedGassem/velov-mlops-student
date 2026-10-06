@@ -27,7 +27,7 @@ class PredictionRequest(BaseModel):
     TODO 3 [Must] : refuser un champ inconnu (indice : model_config / extra). ✓
     TODO 4 [Must] : refuser bikes_available > capacity (indice : @model_validator(mode="after")). ✓
     TODO 4 bis [Should] : normaliser timestamp en UTC
-             (indice : @field_validator("timestamp") et value.astimezone(UTC)). 
+             (indice : @field_validator("timestamp") et value.astimezone(UTC)). ✓
     """
 
     model_config = ConfigDict(extra="forbid")  
