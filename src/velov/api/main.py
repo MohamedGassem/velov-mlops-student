@@ -18,13 +18,15 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 
-from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
-from velov.features import FEATURES, add_features  # noqa: F401
+from velov.api.schemas import PredictionRequest, PredictionResponse
+from velov.features import FEATURES, add_features
 from velov.train import METADATA_FILENAME, sha256_of
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -82,3 +84,24 @@ def ready() -> dict:
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+#   Réponse : pour avoir exactement le même calcul qu'à l'entraînement. Si on le réécrit ici,
+#   la moindre différence (fuseau, type de station_id...) fausse les prédictions sans erreur
+#   visible (training-serving skew).
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(req: PredictionRequest) -> PredictionResponse:
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    df = pd.DataFrame([req.model_dump()])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    X = add_features(df)[FEATURES]
+
+    pred = float(STATE["model"].predict(X)[0])
+    pred = min(max(pred, 0.0), float(req.capacity))
+
+    return PredictionResponse(
+        station_id=req.station_id,
+        target_timestamp=req.timestamp + timedelta(hours=1),
+        predicted_bikes=pred,
+        model_version=STATE["metadata"]["model_version"],
+    )
