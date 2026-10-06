@@ -5,7 +5,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -30,6 +32,15 @@ class PredictionRequest(BaseModel):
     bikes_available: int = Field(..., ge=0, description="Vélos disponibles à l'instant t")
     temperature: float = Field(..., ge=-30, le=50, description="Température en °C")
     is_raining: bool = Field(..., description="Pluie en cours à l'instant t")
+
+    @model_validator(mode="after")
+    def velos_inferieurs_a_capacite(self) -> Self:
+        """Règle portant sur deux champs : vérifiée après la validation de chacun."""
+        if self.bikes_available > self.capacity:
+            raise ValueError(
+                f"bikes_available ({self.bikes_available}) ne peut pas dépasser capacity ({self.capacity})"
+            )
+        return self
 
 
 class PredictionResponse(BaseModel):
