@@ -22,11 +22,27 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(extra="forbid")
 
-    station_id: int = Field(..., description="Identifiant de la station")
+    station_id: int = Field(..., ge=1, description="Identifiant de la station")
     # TODO : compléter
-
+    timestamp: AwareDatetime = Field(..., description="Horaire fuseau")
+    capacity: int = Field(..., gt=0, le=100, ledescription="Nombre de bornes")
+    bikes_available: int = Field(..., ge=0, description="Nombre de vélo disponible")
+    temperature: float = Field(..., ge=-30, le=50, description="Température")
+    is_raining : bool = Field(..., description="Pluie en cours")
+    
+    @field_validator("timestamp")
+    @classmethod
+    def normalize_timestamp(cls, value: AwareDatetime) -> AwareDatetime:
+        return value.astimezone(UTC)
+    
+    @model_validator(mode="after")
+    def validate_bikes_and_capacity(self) -> PredictionRequest:
+        "Vérifie que le nombre de vélos ne dépasse pas la capacité."
+        if self.bikes_available > self.capacity:
+            raise ValueError("Le nombre de vélo disponible ne peut pas dépasser la capacité de la station.")
+        return self
 
 class PredictionResponse(BaseModel):
     station_id: int
