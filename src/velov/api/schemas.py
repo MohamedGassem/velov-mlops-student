@@ -24,11 +24,11 @@ class PredictionRequest(BaseModel):
 
     model_config = ConfigDict()
 
-    station_id: int = Field(..., description="Identifiant de la station")
+    station_id: int = Field(..., description="Identifiant de la station", ge=1)
     timestamp: AwareDatetime
-    capacity: int
-    bikes_available: int
-    temperature: float
+    capacity: int = Field(..., description="Nombre de places totales", gt=0, le=100)
+    bikes_available: int = Field(..., description="Nombre de vélos disponibles", ge=0)
+    temperature: float = Field(..., description="Température en °C", ge=-30, le=50)
     is_raining: bool
 
 
