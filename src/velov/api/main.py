@@ -18,6 +18,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
@@ -81,3 +82,18 @@ async def ready():
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+@app.post("/v1/predict")
+async def predict(request: PredictionRequest):
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    df = pd.DataFrame([request.model_dump()])
+    df = add_features(df)
+    df = df[FEATURES]
+    raw = float(STATE["model"].predict(df)[0])
+    predicted = min(max(raw, 0.0), float(request.capacity))
+    return PredictionResponse(
+        station_id=request.station_id,
+        target_timestamp=request.timestamp + timedelta(hours=1),
+        predicted_bikes=predicted,
+        model_version=STATE["metadata"]["model_version"],
+    )
