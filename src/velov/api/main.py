@@ -14,14 +14,15 @@ Lancement :
 
 from __future__ import annotations
 
+import os
 import json
 import logging
-import os
+import pandas as pd
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -63,9 +64,21 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
 
+@app.get("/health")
+async def health():
+    """Endpoint de liveness : le process répond (ne dépend pas du modèle)."""
+    return {"status": "ok"}
+
 
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
+@app.get("/ready")
+async def ready():
+    """Endpoint de readiness : 200 si le modèle est chargé, 503 sinon."""
+    if STATE["model"] is None:
+        from fastapi import HTTPException
 
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    return {"status": "ready", "model_version": STATE["metadata"]["model_version"]}
 
 # TODO 7 [Must] : POST /v1/predict
 #   - entrée : PredictionRequest ; sortie : PredictionResponse
@@ -74,3 +87,23 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+
+@app.post("/v1/predict", response_model=PredictionResponse)
+async def predict(request: PredictionRequest):
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    df = pd.DataFrame([request.dict()])
+    df = add_features(df)
+    X = df[FEATURES]
+
+    y_pred = STATE["model"].predict(X)
+    y_pred_bounded = max(0, min(y_pred[0], request.capacity))
+    target_timestamp = request.timestamp + pd.Timedelta(hours=1)
+    return PredictionResponse(
+        station_id=request.station_id,
+        target_timestamp=target_timestamp,
+        predicted_bikes=y_pred_bounded,
+        model_version=STATE["metadata"]["model_version"],
+    )
+    

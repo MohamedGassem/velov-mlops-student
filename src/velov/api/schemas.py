@@ -5,7 +5,7 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -22,11 +22,20 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(extra="forbid") 
 
-    station_id: int = Field(..., description="Identifiant de la station")
-    # TODO : compléter
-
+    station_id: int = Field(..., ge=1, description="Identifiant de la station")
+    timestamp: AwareDatetime = Field(..., description="Instant de l'observation (UTC conseillé)")
+    capacity: int = Field(..., gt=0, le=100, description="Nombre total de places à la station")
+    bikes_available: int = Field(..., ge=0, description="Nombre de vélos disponibles à la station")
+    temperature: float = Field(..., ge=-30, le=50, description="Température en °C")
+    is_raining: int = Field(..., ge=0, le=1, description="1 si pluie, 0 sinon")
+    
+    @model_validator(mode="after")
+    def check_bikes_available(cls, values):
+        if values.bikes_available > values.capacity:
+            raise ValueError("bikes_available ne peut pas être supérieur à capacity")
+        return values
 
 class PredictionResponse(BaseModel):
     station_id: int
