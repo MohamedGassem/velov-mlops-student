@@ -20,8 +20,11 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from datetime import timedelta
+import pandas as pd
+import numpy as np
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -68,6 +71,36 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 
 
 # TODO 7 [Must] : POST /v1/predict
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(payload: PredictionRequest):
+    # 1. Vérifier si le modèle est chargé
+    model = STATE["model"]
+    metadata = STATE["metadata"]
+    if model is None or metadata is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    # 2. Convertir les données d'entrée en DataFrame Pandas (1 seule ligne)
+    df = pd.DataFrame([payload.model_dump()])
+
+    # 3. Calculer les features et garder uniquement celles attendues par le modèle
+    df_features = add_features(df)
+    X = df_features[FEATURES]
+
+    # 4. Prédire et borner entre 0 et la capacité de la station
+    raw_pred = model.predict(X)[0]
+    predicted = float(np.clip(raw_pred, 0, payload.capacity))
+
+    # 5. Calculer le timestamp dans 1 heure (t + 1h)
+    target_timestamp = payload.timestamp + timedelta(hours=1)
+
+    # 6. Renvoyer la réponse au format PredictionResponse
+    return PredictionResponse(
+        station_id=payload.station_id,
+        target_timestamp=target_timestamp,
+        predicted_bikes=predicted,
+        model_version=metadata["model_version"],
+    )
+
 #   - entrée : PredictionRequest ; sortie : PredictionResponse
 #   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES
 #   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h
