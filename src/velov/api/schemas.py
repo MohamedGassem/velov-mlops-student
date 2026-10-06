@@ -22,10 +22,14 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(extra="forbid")
 
-    station_id: int = Field(..., description="Identifiant de la station")
-    # TODO : compléter
+    station_id: int = Field(...,ge=1, description="Identifiant de la station")
+    timestamp: AwareDatetime = Field(..., description="Instant de la mesure")
+    capacity: int = Field(..., ge=1, le=100, description="Capacité de la station")
+    bikes_available: int = Field(..., ge=0, le=capacity, description="Nombre de vélos disponibles")
+    temperature: float = Field(..., ge=-30, le=50, description="Température")
+    is_raining: bool = Field(..., description="Précipitations")
 
 
 class PredictionResponse(BaseModel):
