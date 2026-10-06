@@ -13,7 +13,6 @@ Lancement :
 """
 
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException
 
 import json
 import logging
@@ -21,9 +20,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import pandas as pd
 import joblib
 from fastapi import FastAPI
-
+from datetime import timedelta
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
 from velov.train import METADATA_FILENAME, sha256_of
@@ -84,3 +84,21 @@ def ready() -> dict:
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest) -> PredictionResponse:
+    model = STATE["model"]
+    if model is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    df = pd.DataFrame([request.model_dump()])
+    X = add_features(df)[FEATURES]
+    raw = float(model.predict(X)[0])
+    predicted = min(max(raw, 0.0), float(request.capacity))
+
+    return PredictionResponse(
+        station_id=request.station_id,
+        target_timestamp=request.timestamp + timedelta(hours=1),
+        predicted_bikes=predicted,
+        model_version=STATE["metadata"]["model_version"],
+    )
