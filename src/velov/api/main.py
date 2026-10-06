@@ -13,6 +13,7 @@ Lancement :
 """
 
 from __future__ import annotations
+from fastapi import FastAPI, HTTPException
 
 import json
 import logging
@@ -63,9 +64,18 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
 
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
 
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
 
+@app.get("/ready")
+def ready() -> dict:
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    return {"status": "ready", "model_version": STATE["metadata"]["model_version"]}
 
 # TODO 7 [Must] : POST /v1/predict
 #   - entrée : PredictionRequest ; sortie : PredictionResponse
