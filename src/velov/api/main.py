@@ -21,7 +21,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+from datetime import timedelta
+
+import pandas as pd
+from fastapi import FastAPI, HTTPException, status
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -64,6 +67,7 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
 
 
+
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
 
 
@@ -74,3 +78,48 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+
+# Partie réalisée avec de l'IA (copilot) pour gagner du temps
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    if STATE["model"] is None or STATE["metadata"] is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="model not loaded")
+    return {"model_version": STATE["metadata"]["model_version"]}
+
+
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(req: PredictionRequest):
+    if STATE["model"] is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="model not loaded")
+
+    row = {
+        "station_id": req.station_id,
+        "timestamp": req.timestamp,
+        "capacity": req.capacity,
+        "bikes_available": req.bikes_available,
+        "temperature": req.temperature,
+        "is_raining": req.is_raining,
+    }
+    df = pd.DataFrame([row])
+
+    feats = add_features(df)[FEATURES]
+
+    pred = STATE["model"].predict(feats)
+    predicted = float(pred[0])
+
+    predicted = max(0.0, min(predicted, float(req.capacity)))
+
+    target_ts = req.timestamp + timedelta(hours=1)
+
+    return PredictionResponse(
+        station_id=req.station_id,
+        target_timestamp=target_ts,
+        predicted_bikes=predicted,
+        model_version=STATE["metadata"]["model_version"],
+    )
