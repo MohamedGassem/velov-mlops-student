@@ -22,7 +22,7 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(extra="forbid")
 
     station_id: int = Field(..., description="Identifiant de la station", ge=1)
     timestamp: AwareDatetime
