@@ -18,10 +18,13 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
+import pandas as pd
+
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -61,16 +64,40 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifespan)
 
 
-# TODO 5 [Should] : GET /health -> {"status": "ok"}
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
-# TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
+@app.get("/ready")
+def ready():
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "ready", "model_version": STATE["metadata"]["model_version"]}
 
 
-# TODO 7 [Must] : POST /v1/predict
-#   - entrée : PredictionRequest ; sortie : PredictionResponse
-#   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES
-#   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h
-#     (l'instant porte son fuseau : le contrat l'a validé)
-#   - 503 si le modèle n'est pas chargé
-#   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+@app.post("/v1/predict")
+def predict(req: PredictionRequest) -> PredictionResponse:
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    df = pd.DataFrame([{
+        "station_id": req.station_id,
+        "timestamp": pd.Timestamp(req.timestamp),
+        "capacity": req.capacity,
+        "bikes_available": req.bikes_available,
+        "temperature": req.temperature,
+        "is_raining": req.is_raining,
+    }])
+
+    df = add_features(df)
+    prediction = STATE["model"].predict(df[FEATURES])[0]
+    predicted_bikes = float(max(0, min(prediction, req.capacity)))
+    target_timestamp = req.timestamp + timedelta(hours=1)
+
+    return PredictionResponse(
+        station_id=req.station_id,
+        target_timestamp=target_timestamp,
+        predicted_bikes=predicted_bikes,
+        model_version=STATE["metadata"]["model_version"],
+    )

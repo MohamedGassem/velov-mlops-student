@@ -54,6 +54,18 @@ Le service doit respecter les exigences de [docs/exigences.md](docs/exigences.md
 Chaque rendu indique celles qu'il couvre et comment le vérifier.
 
 
+## Exigences couvertes (S1)
+
+| ID | Exigence | Preuve |
+|---|---|---|
+| EX-01 | Entrée invalide → 4xx, jamais 500 | `pytest tests/test_api.py` : champ inconnu → 422, bikes > capacity → 422, timestamp sans fuseau → 422 |
+| EX-02 | `/ready` reflète la capacité réelle | `pytest -k test_ready` : 200 si modèle chargé, 503 sinon |
+| EX-03 | Chaque prédiction indique `model_version` | `pytest -k test_predict_valid` : champ `model_version` dans la réponse |
+| EX-04 | Démarrage depuis un clone propre | Suivre la section « Démarrage rapide » ci-dessus |
+| EX-05 | Modèle bat la baseline de persistance | `cat models/metadata.json` : MAE modèle (1.339) < MAE baseline (1.879) |
+| EX-07 | Erreurs observables dans les logs | Logs uvicorn : exception détaillée si le modèle ne charge pas |
+
+
 ## Structure
 
 ```
@@ -73,3 +85,9 @@ exercices/         démo pickle (S1)
 Chaque activité indique son mode : **sans IA**, **IA déclarée** ou **IA imposée**.
 En mode IA déclarée, ajoutez dans la description de vos commits ou de votre rendu :
 outil utilisé, ce que vous lui avez demandé, ce que vous avez vérifié ou corrigé.
+
+### S1 — IA déclarée (partie API)
+
+- Outil : Claude Code (Claude Opus 4.6)
+- Demande : compléter les TODOs 5-7 (endpoints API) et TODO 9 (tests supplémentaires)
+- Vérifié : 14/14 tests passent (`pytest -v`), endpoints testés manuellement
