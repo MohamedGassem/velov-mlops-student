@@ -23,3 +23,57 @@ def test_predict_valid(client, valid_payload):
 def test_predict_rejects_bikes_above_capacity(client, valid_payload):
     r = client.post("/v1/predict", json={**valid_payload, "bikes_available": 25})
     assert r.status_code == 422
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_ready_with_model(client):
+    r = client.get("/ready")
+    assert r.status_code == 200
+    assert r.json()["model_version"] == "0.0.0-test"
+
+
+def test_ready_503_without_model(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("MODEL_DIR", str(tmp_path))  # dossier vide
+    from velov.api.main import app
+
+    with TestClient(app) as c:
+        assert c.get("/health").status_code == 200
+        assert c.get("/ready").status_code == 503
+        assert c.post("/v1/predict", json={
+            "station_id": 2,
+            "timestamp": "2026-10-06T08:00:00+02:00",
+            "capacity": 20,
+            "bikes_available": 12,
+            "temperature": 14.5,
+            "is_raining": False,
+        }).status_code == 503
+
+
+def test_predict_rejects_unknown_field(client, valid_payload):
+    r = client.post("/v1/predict", json={**valid_payload, "humidity": 80})
+    assert r.status_code == 422
+
+
+def test_predict_rejects_naive_timestamp(client, valid_payload):
+    r = client.post("/v1/predict", json={**valid_payload, "timestamp": "2026-10-06T08:00:00"})
+    assert r.status_code == 422
+
+
+def test_prediction_between_0_and_capacity(client, valid_payload):
+    for bikes in (0, 10, 20):
+        r = client.post("/v1/predict", json={**valid_payload, "bikes_available": bikes})
+        assert r.status_code == 200
+        assert 0 <= r.json()["predicted_bikes"] <= valid_payload["capacity"]
+
+
+def test_predict_unknown_station(client, valid_payload):
+    # station jamais vue à l'entraînement (le modèle n'a que les stations 1 à 3)
+    r = client.post("/v1/predict", json={**valid_payload, "station_id": 999})
+    assert r.status_code == 200
