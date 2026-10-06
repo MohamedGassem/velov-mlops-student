@@ -74,7 +74,7 @@ def ready() -> dict[str, str]:
     """Readiness probe : 200 si le modèle est prêt à servir, 503 sinon."""
     if STATE["model"] is None or STATE["metadata"] is None:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=503,
             detail="Modèle non chargé",
         )
     return {
