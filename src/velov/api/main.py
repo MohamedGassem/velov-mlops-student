@@ -21,8 +21,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
-
+from fastapi import FastAPI, HTTPException
+import pandas as pd
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
 from velov.train import METADATA_FILENAME, sha256_of
@@ -62,10 +62,17 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 
 
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
-
+@app.get("/ready")
+async def ready():
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    return {"status": "ok", "version": STATE["metadata"]["model_version"]}
 
 # TODO 7 [Must] : POST /v1/predict
 #   - entrée : PredictionRequest ; sortie : PredictionResponse
