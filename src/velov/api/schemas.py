@@ -5,7 +5,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from datetime import UTC, datetime
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -22,10 +24,25 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    model_config = ConfigDict(extra="forbid")
 
-    station_id: int = Field(..., description="Identifiant de la station")
-    # TODO : compléter
+    station_id: int = Field(..., ge=1, description="Identifiant de la station")
+    timestamp: AwareDatetime = Field(..., description="Instant de l'observation, avec fuseau")
+    capacity: int = Field(..., gt=0, le=100, description="Nombre de places de la station")
+    bikes_available: int = Field(..., ge=0, description="Vélos disponibles à l'instant t")
+    temperature: float = Field(..., ge=-30, le=50, description="Température en °C")
+    is_raining: bool = Field(..., description="Il pleut à l'instant t")
+
+    @field_validator("timestamp")
+    @classmethod
+    def _to_utc(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def _bikes_within_capacity(self) -> PredictionRequest:
+        if self.bikes_available > self.capacity:
+            raise ValueError("bikes_available ne peut pas dépasser capacity")
+        return self
 
 
 class PredictionResponse(BaseModel):
@@ -35,4 +52,11 @@ class PredictionResponse(BaseModel):
     model_version: str
 
 
-# STRETCH : BatchPredictionRequest (1 à 1000 PredictionRequest) et BatchPredictionResponse
+class BatchPredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PredictionRequest] = Field(..., min_length=1, max_length=1000)
+
+
+class BatchPredictionResponse(BaseModel):
+    predictions: list[PredictionResponse]

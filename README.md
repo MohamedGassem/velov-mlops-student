@@ -53,6 +53,39 @@ Les instants sont renvoyés et journalisés en UTC (`"target_timestamp": "2026-1
 Le service doit respecter les exigences de [docs/exigences.md](docs/exigences.md), de S1 à S9.
 Chaque rendu indique celles qu'il couvre et comment le vérifier.
 
+### Rendu TP1 : exigences couvertes
+
+Toutes les preuves se lancent après l'installation (voir *Démarrage rapide*) : `pytest` (18 tests au vert),
+`python -m velov.train` pour la métrique, `uvicorn velov.api.main:app` pour les appels `curl`.
+
+| Exigence | Couverte | Preuve |
+|---|---|---|
+| EX-01 | Oui | `tests/test_api.py` : `test_predict_rejects_bikes_above_capacity`, `test_champ_inconnu_rejete`, `test_timestamp_sans_fuseau_rejete`, `test_batch_rejette_liste_vide_et_item_invalide` (422). Bornes et champs dans `api/schemas.py`. |
+| EX-02 | Partiellement | `/ready` répond 503 si le modèle est absent (`test_health_ok_sans_modele`) et le modèle n'est chargé qu'après vérification du SHA-256 (`load_model`). Le `HEALTHCHECK` de l'image relève de S2. |
+| EX-03 | Oui | Champ `model_version` dans chaque réponse (`test_predict_borne_et_version`, `test_ready_donne_la_version`). |
+| EX-04 | Python seulement | Procédure du *Démarrage rapide* suivie depuis un venv vierge. Pas encore de revue par un autre binôme ni de `docker compose` (S2). |
+| EX-05 | Oui | `models/metadata.json` : MAE modèle 1,339 contre 1,879 pour la persistance, sur le test temporel de 14 jours. Seuil automatisé en CI prévu en S4. |
+| EX-07 | Partiellement | Un échec de chargement du modèle est journalisé avec sa cause (`logger.exception` dans `lifespan`), visible dans le terminal d'uvicorn. |
+
+Non couvertes à ce stade : EX-06 (secrets), EX-08 (traçabilité en base) et EX-09 (revue croisée), prévues à partir de S2.
+
+Stretch réalisé : `/v1/predict/batch` (1 à 1000 observations), `/v1/model`, journal MLflow (`python -m velov.train --mlflow`).
+
+### Rendu TP1 : usage de l'IA générative
+
+| Partie | Mode prévu | Mode réel |
+|---|---|---|
+| `api/main.py` : `/v1/predict`, `/health`, `/ready` | IA déclarée | IA déclarée |
+| `tests/test_api.py` (tests d'erreur) | IA déclarée | IA déclarée |
+| Stretch : batch, `/v1/model` | IA déclarée | IA déclarée |
+
+- **Outil utilisé** : Claude Code (modèle Claude Sonnet 5.5).
+- **Ce que j'ai demandé** : compléter les TODO de `api/main.py`, ajouter des tests d'erreur, puis le Stretch
+  (batch, `/v1/model`) ; corriger un test trop faible ; ajouter `*.pkl` et `*.egg-info/` au `.gitignore` et un message d'erreur dans `exercices/s1_pickle/demo_pickle.py`.
+- **Ce qui a été vérifié** : `pytest` (18 tests) et `ruff` au vert ; appels `curl` réels sur `/health`, `/ready`, `/v1/predict`
+  (200 avec `target_timestamp` en UTC, 422 sans fuseau) ; MAE du modèle inférieure à celle de la baseline.
+- **Ce qui a été corrigé** : un test qui n'avait pas de valeur (`status_code in (422, 503)`) a été supprimé, le 503 étant déjà couvert par un test dédié.
+
 
 ## Structure
 

@@ -23,3 +23,76 @@ def test_predict_valid(client, valid_payload):
 def test_predict_rejects_bikes_above_capacity(client, valid_payload):
     r = client.post("/v1/predict", json={**valid_payload, "bikes_available": 25})
     assert r.status_code == 422
+
+
+def test_health_ok_sans_modele(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from velov.api.main import app
+
+    monkeypatch.setenv("MODEL_DIR", str(tmp_path))  # dossier vide
+    with TestClient(app) as c:
+        assert c.get("/health").status_code == 200
+        assert c.get("/ready").status_code == 503  # EX-02
+
+
+def test_ready_donne_la_version(client):
+    r = client.get("/ready")
+    assert r.status_code == 200
+    assert r.json()["model_version"] == "0.0.0-test"
+
+
+def test_predict_503_sans_modele(monkeypatch, tmp_path, valid_payload):
+    from fastapi.testclient import TestClient
+
+    from velov.api.main import app
+
+    monkeypatch.setenv("MODEL_DIR", str(tmp_path))
+    with TestClient(app) as c:
+        assert c.post("/v1/predict", json=valid_payload).status_code == 503
+
+
+def test_predict_borne_et_version(client, valid_payload):
+    body = client.post("/v1/predict", json=valid_payload).json()
+    assert 0 <= body["predicted_bikes"] <= valid_payload["capacity"]
+    assert body["model_version"] == "0.0.0-test"  # EX-03
+
+
+def test_champ_inconnu_rejete(client, valid_payload):
+    assert client.post("/v1/predict", json={**valid_payload, "foo": 1}).status_code == 422
+
+
+def test_timestamp_sans_fuseau_rejete(client, valid_payload):
+    r = client.post("/v1/predict", json={**valid_payload, "timestamp": "2026-10-06T08:00:00"})
+    assert r.status_code == 422
+
+
+def test_model_info(client):
+    body = client.get("/v1/model").json()
+    assert body["model_version"] == "0.0.0-test"
+    assert body["metrics"]["mae_model"] > 0
+
+
+def test_model_info_503_sans_modele(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from velov.api.main import app
+
+    monkeypatch.setenv("MODEL_DIR", str(tmp_path))
+    with TestClient(app) as c:
+        assert c.get("/v1/model").status_code == 503
+
+
+def test_batch(client, valid_payload):
+    items = [valid_payload, {**valid_payload, "station_id": 1, "bikes_available": 3}]
+    r = client.post("/v1/predict/batch", json={"items": items})
+    assert r.status_code == 200
+    preds = r.json()["predictions"]
+    assert [p["station_id"] for p in preds] == [2, 1]
+    assert all(0 <= p["predicted_bikes"] <= 20 for p in preds)
+
+
+def test_batch_rejette_liste_vide_et_item_invalide(client, valid_payload):
+    assert client.post("/v1/predict/batch", json={"items": []}).status_code == 422
+    bad = {**valid_payload, "bikes_available": 25}
+    assert client.post("/v1/predict/batch", json={"items": [valid_payload, bad]}).status_code == 422

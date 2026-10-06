@@ -51,4 +51,6 @@ if __name__ == "__main__":
     actions = {"create": create, "inspect": inspect, "load": load}
     if len(sys.argv) != 2 or sys.argv[1] not in actions:
         sys.exit(f"Usage : python {Path(__file__).name} [create|inspect|load]")
+    if sys.argv[1] != "create" and not PAYLOAD_FILE.exists():
+        sys.exit(f"{PAYLOAD_FILE.name} introuvable : lancez d'abord 'python {Path(__file__).name} create'")
     actions[sys.argv[1]]()

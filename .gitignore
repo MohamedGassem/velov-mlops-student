@@ -1,4 +1,5 @@
 .venv/
+*.egg-info/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -11,6 +12,7 @@ models/*
 !models/.gitkeep
 mlflow.db
 mlruns/
+exercices/s1_pickle/*.pkl
 
 # Secrets
 .env
