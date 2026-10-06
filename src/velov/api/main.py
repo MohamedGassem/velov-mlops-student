@@ -62,6 +62,9 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 
 
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
 
 
 # TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
