@@ -4,8 +4,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 """
 
 from __future__ import annotations
+from datetime import UTC
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field,model_validator, field_validator
 
 
 class PredictionRequest(BaseModel):
@@ -22,17 +23,36 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
-
-    station_id: int = Field(..., description="Identifiant de la station")
-    # TODO : compléter
-
+    
+    model_config = ConfigDict(extra="forbid")
+  # TODO : refuser un champ inconnu
+    
+   
 
 class PredictionResponse(BaseModel):
-    station_id: int
-    target_timestamp: AwareDatetime = Field(..., description="Instant prédit (t + 1 h)")
-    predicted_bikes: float = Field(..., ge=0)
-    model_version: str
+     # TODO : compléter 
+        station_id: int = Field(..., description="Identifiant de la station", ge=1 )
+        timestamp: AwareDatetime = Field(..., description="Instant de l'observation")
+        capacity: int = Field(..., description="Capacité de la station", gt=0, le=100)
+        bikes_available: int = Field(..., description="Nombre de vélos disponibles", ge=0)
+        temperature: float = Field(..., description="Température en °C", ge=-30, le=50)
+     
+     
+        @model_validator(mode="after")
+        def check_bikes_available(self):
+            """Vérifie que bikes_available <= capacity."""
+            if self.bikes_available > self.capacity:
+                raise ValueError("bikes_available ne peut pas dépasser capacity")
+            return self
+    
+        @field_validator("timestamp")
+        def normalize_timestamp(cls, value: AwareDatetime) -> AwareDatetime:
+            
+            return value.astimezone(UTC)  
+    
+
+
+
 
 
 # STRETCH : BatchPredictionRequest (1 à 1000 PredictionRequest) et BatchPredictionResponse

@@ -22,6 +22,10 @@ from pathlib import Path
 
 import joblib
 from fastapi import FastAPI
+from datetime import timedelta
+
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 
 from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
@@ -74,3 +78,24 @@ app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifesp
 #     (l'instant porte son fuseau : le contrat l'a validé)
 #   - 503 si le modèle n'est pas chargé
 #   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest) -> PredictionResponse:
+    model = STATE["model"]
+    metadata = STATE["metadata"]
+    if model is None or metadata is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    frame = pd.DataFrame([request.model_dump()])
+    features = add_features(frame)[FEATURES]
+
+    raw_prediction = float(model.predict(features)[0])
+    predicted_bikes = max(0.0, min(raw_prediction, float(request.capacity)))
+
+    return PredictionResponse(
+        station_id=request.station_id,
+        target_timestamp=request.timestamp + timedelta(hours=1),
+        predicted_bikes=predicted_bikes,
+        model_version=metadata["model_version"],
+    )
+
+# add_feeatures est importé plutôt que recalculé  pour garantir la cohérence avec le pipeline de transformation des données utilisé lors de l'entraînement du modèle. Cela permet d'eviter des divergences dans les calculs.
