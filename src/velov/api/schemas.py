@@ -31,11 +31,11 @@ class PredictionRequest(BaseModel):
     temperature: float = Field(..., ge=-30, le=50, description="Température en Celsius")
     is_raining: bool = Field(..., description="Indique si il pleut")
 
-@model_validator(mode="after")
-def check_bikes_available(self):
-    if self.bikes_available > self.capacity:
-        raise ValueError("Il y a plus de vélos disponibles que la capacité de la station.")
-    return self   
+    @model_validator(mode="after")
+    def check_bikes_available(self):
+        if self.bikes_available > self.capacity:
+            raise ValueError("Il y a plus de vélos disponibles que la capacité de la station.")
+        return self   
 
 class PredictionResponse(BaseModel):
     station_id: int
