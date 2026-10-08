@@ -39,7 +39,7 @@ class PredictionRequest(BaseModel):
     capacity: int = Field(..., description="nombre total de bornes", gt=0, le=100)
     bikes_available: int = Field(..., description="vélos actuellement disponibles", ge=0)
     temperature: float = Field(..., description="température en °C", ge=-30, le=50)
-    is_raining: bool = Field(..., description="indique s’il pleut")
+    is_raining: bool = Field(..., description="indique s'il pleut")
 
     # TODO 4
     @model_validator(mode="after")
