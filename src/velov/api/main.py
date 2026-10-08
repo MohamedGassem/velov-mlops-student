@@ -23,7 +23,7 @@ from pathlib import Path
 import joblib
 from fastapi import FastAPI
 
-from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
+from velov.api.schemas import PredictionRequest, PredictionResponse, BatchPredictionRequest, BatchPredictionResponse  # noqa: F401
 from velov.features import FEATURES, add_features  # noqa: F401
 from velov.train import METADATA_FILENAME, sha256_of
 
@@ -103,4 +103,38 @@ def predict(payload: PredictionRequest):
         predicted_bikes=float(round(y,2)),
         model_version=STATE["metadata"]["model_version"],
     )
+# tp1 p5 STRETCH
+@app.post("/v1/predict/batch", response_model=BatchPredictionResponse)
+def predict_batch(payload: BatchPredictionRequest):
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    
+    raw = pd.DataFrame([item.model_dump() for item in payload.items])
+    X = add_features(raw)[FEATURES]
+    ys = STATE["model"].predict(X)
 
+    predictions = []
+
+    for item, y in zip(payload.items, ys):
+        y = min(max(y, 0), item.capacity)
+
+        predictions.append(
+            PredictionResponse(
+                station_id=item.station_id,
+                target_timestamp=item.timestamp + timedelta(hours=1),
+                predicted_bikes=float(round(y, 2)),
+                model_version=STATE["metadata"]["model_version"],
+            )
+        )
+
+    return BatchPredictionResponse(predictions=predictions)
+
+# tp1 p5 STRETCH
+@app.get("/v1/model")
+def model():
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    else:
+        return {"model_version": STATE["metadata"]["model_version"]}
+
+    
