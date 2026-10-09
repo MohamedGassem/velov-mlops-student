@@ -1,30 +1,18 @@
-"""API de serving du modèle Vélo'v.
-
-TP1, partie 3 : exposez le modèle. Mode : IA déclarée autorisée pour cette partie.
-
-Endpoints attendus (niveaux du TP1 : Must, Should, Stretch) :
-    POST /v1/predict        [Must]    une prédiction
-    GET  /health            [Should]  liveness : le process répond (ne dépend pas du modèle)
-    GET  /ready             [Should]  readiness : 200 si le modèle est chargé, 503 sinon
-    GET  /v1/model, POST /v1/predict/batch   [Stretch]
-
-Lancement :
-    uvicorn velov.api.main:app --reload
-"""
-
 from __future__ import annotations
 
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 
-from velov.api.schemas import PredictionRequest, PredictionResponse  # noqa: F401
-from velov.features import FEATURES, add_features  # noqa: F401
+from velov.api.schemas import PredictionRequest, PredictionResponse
+from velov.features import FEATURES, add_features
 from velov.train import METADATA_FILENAME, sha256_of
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -47,7 +35,7 @@ def load_model(model_dir: Path) -> tuple[object, dict]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Fourni : exécuté une fois au démarrage (avant yield) et à l'arrêt (après yield)."""
+    
     model_dir = Path(os.getenv("MODEL_DIR", "models"))
     try:
         STATE["model"], STATE["metadata"] = load_model(model_dir)
@@ -61,16 +49,34 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifespan)
 
 
-# TODO 5 [Should] : GET /health -> {"status": "ok"}
+# TODO 5 : liveness, ne dépend pas du modèle
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
 
 
-# TODO 6 [Should] : GET /ready -> 200 + version du modèle si chargé, sinon HTTPException 503
+# TODO 6 : readiness, 200 seulement si le modèle est en mémoire
+@app.get("/ready")
+def ready() -> dict:
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+    return {"status": "ready", "model_version": STATE["metadata"]["model_version"]}
 
 
-# TODO 7 [Must] : POST /v1/predict
-#   - entrée : PredictionRequest ; sortie : PredictionResponse
-#   - construire un DataFrame d'une ligne, appliquer add_features, sélectionner FEATURES
-#   - prédire, borner entre 0 et capacity, target_timestamp = timestamp + 1 h
-#     (l'instant porte son fuseau : le contrat l'a validé)
-#   - 503 si le modèle n'est pas chargé
-#   Question : pourquoi importer add_features plutôt que recalculer les features ici ?
+# TODO 7 : une prédiction
+@app.post("/v1/predict", response_model=PredictionResponse)
+def predict(payload: PredictionRequest) -> PredictionResponse:
+    if STATE["model"] is None:
+        raise HTTPException(status_code=503, detail="Modèle non chargé")
+
+    raw = pd.DataFrame([payload.model_dump()])       # une ligne
+    X = add_features(raw)[FEATURES]                  # mêmes features qu'à l'entraînement
+    y = float(STATE["model"].predict(X)[0])
+    y = min(max(y, 0.0), float(payload.capacity))    # borné entre 0 et capacity
+
+    return PredictionResponse(
+        station_id=payload.station_id,
+        target_timestamp=payload.timestamp + timedelta(hours=1),
+        predicted_bikes=round(y, 2),
+        model_version=STATE["metadata"]["model_version"],
+    )
