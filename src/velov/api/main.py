@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from velov.api.schemas import PredictionRequest, PredictionResponse
 from velov.features import FEATURES, add_features
 from velov.train import METADATA_FILENAME, sha256_of
+from velov.api import db
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("velov.api")
@@ -42,6 +43,12 @@ async def lifespan(app: FastAPI):
         logger.info("Modèle %s chargé", STATE["metadata"]["model_version"])
     except Exception:
         logger.exception("Échec du chargement du modèle depuis %s", model_dir)
+
+    try:
+        db.init_db()
+    except Exception:
+        logger.exception("Base de données injoignable : journal désactivé")
+        
     yield
     STATE.update(model=None, metadata=None)
 
@@ -74,9 +81,15 @@ def predict(payload: PredictionRequest) -> PredictionResponse:
     y = float(STATE["model"].predict(X)[0])
     y = min(max(y, 0.0), float(payload.capacity))    # borné entre 0 et capacity
 
-    return PredictionResponse(
+    response = PredictionResponse(
         station_id=payload.station_id,
         target_timestamp=payload.timestamp + timedelta(hours=1),
         predicted_bikes=round(y, 2),
         model_version=STATE["metadata"]["model_version"],
     )
+    db.log_prediction((
+        payload.station_id, payload.timestamp, response.target_timestamp,
+        payload.capacity, payload.bikes_available,
+        response.predicted_bikes, response.model_version,
+    ))
+    return response
