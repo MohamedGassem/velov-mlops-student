@@ -5,7 +5,9 @@ TP1, partie 2 : complétez les schémas. Mode : SANS IA pour cette partie.
 
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from datetime import UTC
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class PredictionRequest(BaseModel):
@@ -22,12 +24,27 @@ class PredictionRequest(BaseModel):
              (indice : @field_validator("timestamp") et value.astimezone(UTC)).
     """
 
-    model_config = ConfigDict()
+    #model_config = ConfigDict()
 
-    station_id: int = Field(..., description="Identifiant de la station")
+    station_id: int = Field(..., ge=1,description="Identifiant de la station")
+    timestamp: AwareDatetime = Field(..., description="Instant de l'observation (avec fuseau horaire)")
+    capacity: int = Field(..., gt=0, le=100, description="Capacité de la station (nombre total de places)")
+    bikes_available: int = Field(..., ge=0, description="Nombre de vélos disponibles à l'instant t")
+    temperature: float = Field(..., ge=-30, le=50, description="Température à l'instant t")
+    is_raining: bool = Field(..., description="Indique s'il pleut à l'instant t")
     # TODO : compléter
-
-
+    model_config = ConfigDict(extra="forbid")
+    
+    @model_validator(mode="after")
+    def check_bikes_available(self):
+        if self.bikes_available > self.capacity:
+            raise ValueError("bikes_available cannot be greater than capacity")
+        return self
+    
+    @field_validator("timestamp")
+    def normalize_timestamp(cls, value):
+        return value.astimezone(UTC)
+    
 class PredictionResponse(BaseModel):
     station_id: int
     target_timestamp: AwareDatetime = Field(..., description="Instant prédit (t + 1 h)")
