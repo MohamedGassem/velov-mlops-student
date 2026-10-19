@@ -1,0 +1,36 @@
+# Tout le dossier est envoye au build : on retire ce qui ne doit pas y entrer.
+.git
+.gitignore
+.venv
+venv
+**/__pycache__
+**/*.pyc
+
+# Secrets : jamais dans l'image.
+.env
+.env.*
+
+# Donnees et artefacts d'entrainement : regeneres hors de l'image.
+data/
+mlflow.db
+mlruns/
+
+# Tests, docs, exercices : inutiles au serving.
+tests/
+docs/
+exercices/
+*.egg-info/
+src/velov.egg-info/
+
+# Fichiers d'IDE et OS.
+.vscode/
+.idea/
+.DS_Store
+
+# Images, compose : pas besoin dans l'image elle-meme.
+Dockerfile
+.dockerignore
+docker-compose.yaml
+compose.yaml
+
+# NE PAS ignorer models/ : le modele est embarque dans l'image (voir ADR).

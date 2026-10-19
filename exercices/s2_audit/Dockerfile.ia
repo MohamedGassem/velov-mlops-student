@@ -1,0 +1,22 @@
+# Dockerfile genere par un assistant IA pour :
+# "un Dockerfile pour mon API FastAPI qui sert un modele scikit-learn".
+# L'image se construit, l'API repond. A auditer avec la checklist S2.
+
+FROM python:latest
+
+WORKDIR /app
+
+ENV API_KEY=sk-prod-7f3a9d2c8b1e4f5a6d7c8b9a0e1f2d3c
+ENV POSTGRES_PASSWORD=supersecret
+
+COPY . .
+
+RUN apt-get update && apt-get install -y gcc curl wget vim
+
+RUN pip install fastapi uvicorn scikit-learn pandas numpy joblib pydantic
+
+EXPOSE 80
+
+HEALTHCHECK CMD curl -f http://localhost/ || exit 1
+
+CMD uvicorn velov.api.main:app --reload --host 0.0.0.0 --port 8000

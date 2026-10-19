@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
 
 # Données et artefacts : jamais dans git (régénérables, volumineux, parfois sensibles)
 data/*
