@@ -1,0 +1,10 @@
+# Connexion : une base DuckDB locale, sans mot de passe, donc versionnable.
+# En entreprise, ce fichier reste hors du dépôt dès qu'il contient des identifiants.
+velov:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/velov.duckdb
+      settings:
+        TimeZone: UTC

@@ -3,10 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
 
 # Données et artefacts : jamais dans git (régénérables, volumineux, parfois sensibles)
 data/*
 !data/.gitkeep
+!data/fixtures/
 models/*
 !models/.gitkeep
 mlflow.db
@@ -14,3 +16,8 @@ mlruns/
 
 # Secrets
 .env
+
+# dbt (S3)
+velov_dbt/target/
+velov_dbt/logs/
+velov_dbt/dbt_packages/

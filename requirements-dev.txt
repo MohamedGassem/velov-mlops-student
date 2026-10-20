@@ -5,3 +5,11 @@ httpx==0.28.1
 httpx2==2.13.1
 ruff==0.16.9
 mlflow==3.16.1
+# Pipeline de données (S3). dbt reste en 1.x : dbt v2 télécharge son binaire et son
+# pilote DuckDB hors de PyPI, ce qui échoue sur un réseau filtré (voir polycopié S3, 7.5).
+dbt-core==1.12.5
+dbt-duckdb==1.11.0
+duckdb==1.5.6
+pytz==2026.5
+pandera[pandas]==0.34.1
+prefect==3.8.8

@@ -17,6 +17,9 @@ qui dit oui ou non.
 | EX-07 | Les erreurs importantes sont observables dans les logs | Modèle non chargé, base indisponible : la cause est lisible dans les logs (terminal uvicorn en S1, `docker compose logs` en S2) | S1, S2 |
 | EX-08 | Chaque prédiction est traçable | Entrées, sortie, version du modèle et horodatage UTC journalisés en base | S2 |
 | EX-09 | Un autre binôme peut exploiter le service avec le README et le runbook | Revue croisée : démarrer, vérifier la santé, arrêter, diagnostiquer `/ready` en 503 | S2, S9 |
+| EX-10 | Rejouer le pipeline sur une même période ne change pas la table gold | Deux runs successifs : même nombre de lignes, aucun doublon sur (station_id, timestamp) | S3 |
+| EX-11 | Aucune feature n'utilise une information postérieure à l'instant de prédiction | Revue du SQL gold et de `features.py` ; justification dans la model card | S3, S4 |
+| EX-12 | Une table gold qui viole le contrat n'est jamais publiée | Contrat dbt enforced, tests bloquants, validation Pandera avant l'entraînement | S3 |
 
 ## Conventions associées
 

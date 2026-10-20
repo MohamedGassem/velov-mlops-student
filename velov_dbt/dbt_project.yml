@@ -1,0 +1,15 @@
+# Projet dbt du fil rouge (S3) : silver (vues stg_*) et gold (table station_hourly).
+# Toutes les commandes se lancent depuis ce dossier avec --profiles-dir . :
+#   dbt build --profiles-dir .
+name: velov
+version: "0.3.0"
+profile: velov
+config-version: 2
+vars:
+  bronze: "../data/bronze"
+models:
+  velov:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

@@ -8,6 +8,7 @@ Ce qu'on distribue (S1) n'est pas "un modèle" mais un paquet :
 Usage :
     python -m velov.train --data data/velov_history.csv --out models/
     python -m velov.train --data data/velov_history.csv --out models/ --mlflow
+    python -m velov.train --data data/velov.duckdb --test-days 1   # table gold du pipeline (S3)
 """
 
 from __future__ import annotations
@@ -62,6 +63,21 @@ def build_pipeline(seed: int = 42) -> Pipeline:
     return Pipeline([("preprocess", preprocess), ("model", model)])
 
 
+def load_table(path: Path) -> pd.DataFrame:
+    """Lit la table d'entraînement : CSV du simulateur (S1-S2) ou table gold DuckDB (S3).
+
+    La table gold est vérifiée contre le contrat Pandera avant tout entraînement (EX-12).
+    Les imports sont locaux : duckdb et pandera ne font pas partie de l'image de serving.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"{path} introuvable : lancer `python -m velov.data` ou le pipeline S3")
+    if path.suffix == ".duckdb":
+        from velov.contract import StationHourly, load
+
+        return StationHourly.validate(load(str(path)), lazy=True)
+    return pd.read_csv(path, parse_dates=["timestamp"])
+
+
 def temporal_split(df: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Découpage temporel : on teste sur le futur, jamais sur un échantillon aléatoire."""
     cutoff = pd.to_datetime(df["timestamp"]).max() - pd.Timedelta(days=test_days)
@@ -80,10 +96,7 @@ def train(
     seed: int = 42,
 ) -> dict:
     """Entraîne, évalue contre une baseline, écrit l'artefact. Retourne les métadonnées."""
-    if not data_path.exists():
-        raise FileNotFoundError(f"{data_path} introuvable : lancer d'abord `python -m velov.data`")
-
-    raw = pd.read_csv(data_path, parse_dates=["timestamp"])
+    raw = load_table(data_path)
     frame = make_training_frame(raw)
     train_df, test_df = temporal_split(frame, test_days)
 
@@ -170,10 +183,11 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=Path("data/velov_history.csv"))
     parser.add_argument("--out", type=Path, default=Path("models"))
     parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--test-days", type=int, default=14, help="jours les plus récents gardés pour le test")
     parser.add_argument("--mlflow", action="store_true", help="journaliser aussi dans MLflow")
     args = parser.parse_args()
 
-    metadata = train(args.data, args.out, version=args.version)
+    metadata = train(args.data, args.out, version=args.version, test_days=args.test_days)
     m = metadata["metrics"]
     print(f"MAE modèle   : {m['mae_model']:.3f} vélos")
     print(f"MAE baseline : {m['mae_baseline_persistence']:.3f} vélos (persistance)")
