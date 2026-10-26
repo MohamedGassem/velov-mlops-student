@@ -21,15 +21,17 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import psycopg
 
-# Profils de remplissage (taux d'occupation 0-1 selon l'heure, jours ouvrés).
-# residential : se vide le matin (départs au travail), se remplit le soir.
-# business    : l'inverse.
-# leisure     : peu sensible aux heures de bureau, plus chargée le week-end.
+# Profile definitions (occupancy rate 0-1 depending on hour for weekdays).
+# residential : empties in the morning, fills in the evening.
+# business    : inverse of residential.
+# leisure     : less sensitive to office hours, higher load on weekends.
 PROFILES = ("residential", "business", "leisure")
 
 
@@ -67,12 +69,12 @@ def simulate(
         raise ValueError("n_stations doit être compris entre 1 et 500")
 
     rng = np.random.default_rng(seed)
-    # Heure locale pour simuler les usages, UTC pour stocker l'instant.
+    # Local time to simulate usage, stored in UTC.
     timestamps = pd.date_range(start=start, periods=days * 24, freq="h", tz="Europe/Paris")
     hour = np.asarray(timestamps.hour)
     is_weekend = np.asarray(timestamps.dayofweek) >= 5
 
-    # Météo commune à toutes les stations (une seule ville).
+    # Weather shared across all stations (single city).
     daily_temp = 22 + 6 * np.sin(np.arange(days) / days * np.pi) + rng.normal(0, 2, days)
     temperature = np.repeat(daily_temp, 24) + 5 * np.sin((hour - 9) / 24 * 2 * np.pi)
     is_raining = rng.random(len(timestamps)) < 0.08
@@ -86,9 +88,9 @@ def simulate(
             _weekend_occupancy(hour, profile),
             _weekday_occupancy(hour, profile),
         )
-        # La pluie réduit les départs : les stations restent plus pleines.
+        # Rain reduces departures: stations stay fuller.
         occ = occ + 0.10 * is_raining
-        # Bruit autocorrélé (AR(1)) : la disponibilité d'une heure dépend de la précédente.
+        # Autocorrelated noise (AR(1)): availability depends on previous hour.
         noise = np.zeros(len(timestamps))
         for t in range(1, len(noise)):
             noise[t] = 0.7 * noise[t - 1] + rng.normal(0, 0.05)
@@ -109,18 +111,67 @@ def simulate(
     return pd.concat(frames, ignore_index=True)
 
 
+def ingest_to_db(df: pd.DataFrame, db_url: str) -> None:
+
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS raw_station_status (
+        station_id INT,
+        timestamp TIMESTAMPTZ,
+        capacity INT,
+        bikes_available INT,
+        temperature FLOAT,
+        is_raining BOOLEAN,
+        PRIMARY KEY (station_id, timestamp)
+    );
+    """
+
+    insert_sql = """
+    INSERT INTO raw_station_status (
+        station_id, timestamp, capacity, bikes_available, temperature, is_raining
+    ) VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (station_id, timestamp) DO NOTHING;
+    """
+
+    with psycopg.connect(db_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(create_table_sql)
+            data_to_insert = [
+                (
+                    int(row.station_id),
+                    row.timestamp.to_pydatetime(),
+                    int(row.capacity),
+                    int(row.bikes_available),
+                    float(row.temperature),
+                    bool(row.is_raining),
+                )
+                for row in df.itertuples(index=False)
+            ]
+            cur.executemany(insert_sql, data_to_insert)
+        conn.commit()
+    print(f"Successfully processed {len(df):,} rows into PostgreSQL bronze table.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Génère un historique Vélo'v synthétique.")
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--stations", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", type=Path, default=Path("data/velov_history.csv"))
+    parser.add_argument("--db", action="store_true", help="Ingest into PostgreSQL bronze table")
     args = parser.parse_args()
 
     df = simulate(days=args.days, n_stations=args.stations, seed=args.seed)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.out, index=False)
-    print(f"{len(df):,} lignes écrites dans {args.out}")
+    print(f"{len(df):,} lines written to {args.out}")
+
+    if args.db:
+        # Utilisation explicite du mot de passe 'velov' validé par le conteneur
+        db_url = "postgresql://velov:velov-local-2026@localhost:5433/velov"
+        ingest_to_db(df, db_url)
+    
+        print(f"Connecting with database URL: {db_url}")
+        ingest_to_db(df, db_url)
 
 
 if __name__ == "__main__":

@@ -9,68 +9,59 @@ calculées différemment de celles vues à l'entraînement, sans aucune erreur v
 from __future__ import annotations
 
 import pandas as pd
-
-TARGET = "bikes_next_hour"
-
-# Les instants circulent en UTC, mais les usages suivent l'heure locale de Lyon :
-# les features calendaires (heure, jour) sont calculées dans ce fuseau.
-LOCAL_TZ = "Europe/Paris"
-
-# Colonnes fournies par l'appelant (contrat d'entrée de l'API).
-RAW_COLUMNS = [
-    "station_id",
-    "timestamp",
-    "capacity",
-    "bikes_available",
-    "temperature",
-    "is_raining",
-]
-
-# Colonnes réellement données au modèle, dans cet ordre.
-CATEGORICAL_FEATURES = ["station_id"]
-NUMERIC_FEATURES = [
-    "hour",
-    "day_of_week",
-    "is_weekend",
-    "capacity",
-    "bikes_available",
-    "occupancy_rate",
-    "temperature",
-    "is_raining",
-]
-FEATURES = CATEGORICAL_FEATURES + NUMERIC_FEATURES
+import numpy as np
 
 
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Ajoute les features calendaires et dérivées. Ne modifie pas l'entrée.
+def compute_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform Silver layer data into Gold layer features for ML training.
 
-    Raises:
-        ValueError: si une colonne brute manque, ou si les timestamps n'ont pas de fuseau.
+    Creates time-based features, lag variables, and rolling statistics.
     """
-    missing = set(RAW_COLUMNS) - set(df.columns)
-    if missing:
-        raise ValueError(f"Colonnes manquantes : {sorted(missing)}")
-    if not isinstance(df["timestamp"].dtype, pd.DatetimeTZDtype):
-        # Un timestamp sans fuseau est ambigu : 8 h à Lyon ou 8 h UTC ? On refuse plutôt que deviner.
-        raise ValueError("timestamp doit être un datetime avec fuseau horaire (UTC conseillé)")
+    df = df.copy()
 
-    out = df.copy()
-    ts = out["timestamp"].dt.tz_convert(LOCAL_TZ)  # heure locale pour les features calendaires
-    out["hour"] = ts.dt.hour
-    out["day_of_week"] = ts.dt.dayofweek
-    out["is_weekend"] = (ts.dt.dayofweek >= 5).astype(int)
-    out["occupancy_rate"] = out["bikes_available"] / out["capacity"]
-    out["is_raining"] = out["is_raining"].astype(int)
-    out["station_id"] = out["station_id"].astype(str)  # catégorie, pas un nombre
-    return out
+    # Identify the available bikes column dynamically
+    target_col = None
+    for candidate in ["available_bikes", "bikes_available", "bikes"]:
+        if candidate in df.columns:
+            target_col = candidate
+            break
+
+    if target_col is None:
+        raise KeyError(
+            f"Could not find bike availability column. Available columns: {list(df.columns)}"
+        )
+
+    # Cast timestamp and sort sequentially per station
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values(["station_id", "timestamp"]).reset_index(drop=True)
+
+    # Time-based features
+    df["hour"] = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.dayofweek
+    df["is_weekend"] = df["day_of_week"].isin([5, 6]).astype(int)
+
+    # Lag features (available bikes 1 hour and 2 hours ago)
+    df["bikes_lag_1h"] = df.groupby("station_id")[target_col].shift(1)
+    df["bikes_lag_2h"] = df.groupby("station_id")[target_col].shift(2)
+
+    # Rolling statistics (3-hour moving average)
+    df["bikes_rolling_3h"] = (
+        df.groupby("station_id")[target_col]
+        .transform(lambda x: x.rolling(window=3, min_periods=1).mean())
+    )
+
+    # Fill initial NaN values resulting from shifts
+    df = df.bfill().ffill()
+
+    return df
 
 
-def make_training_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """Features + cible (vélos disponibles à H+1, par station).
-
-    Le décalage se fait PAR station (groupby) : sinon la dernière heure d'une station
-    recevrait la première heure de la station suivante comme cible (fuite silencieuse).
-    """
-    out = add_features(df).sort_values(["station_id", "timestamp"])
-    out[TARGET] = out.groupby("station_id")["bikes_available"].shift(-1)
-    return out.dropna(subset=[TARGET]).reset_index(drop=True)
+if __name__ == "__main__":
+    data_path = "data/velov_history.csv"
+    try:
+        raw_df = pd.read_csv(data_path)
+        features_df = compute_features(raw_df)
+        print(f"Features computed successfully. Dataset shape: {features_df.shape}")
+        print(features_df.head())
+    except FileNotFoundError:
+        print(f"File {data_path} not found. Run python -m velov.data first.")
