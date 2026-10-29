@@ -1,0 +1,49 @@
+# Stack MLflow (S4) : serveur de suivi + registre, sur la VM du binôme.
+# Elle vit à côté de l'API (compose.yaml) : on peut redémarrer l'une sans l'autre.
+# Prérequis : MLFLOW_DB_PASSWORD dans .env (voir .env.example).
+# Lancement : docker compose -f compose.mlflow.yaml up -d --build
+# Interface : http://<ip-de-la-vm>:5000
+
+services:
+  mlflow:
+    build:
+      context: docker
+      dockerfile: mlflow.Dockerfile
+    image: velov-mlflow:3.16.1
+    environment:
+      # Métadonnées (runs, registre) en base ; fichiers (modèles) sur un volume, servis par le serveur.
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg://mlflow:${MLFLOW_DB_PASSWORD:?MLFLOW_DB_PASSWORD manquant, voir .env.example}@mlflow-db:5432/mlflow
+    # Depuis MLflow 3.5, le serveur refuse les en-têtes Host inconnus (protection DNS rebinding).
+    # La liste remplace les valeurs par défaut : on y met tout ce qui doit joindre le serveur,
+    # port compris. 192.168.1.* : le réseau des VM de l'école.
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000 --workers 2
+      --artifacts-destination /mlartifacts
+      --allowed-hosts mlflow:5000,localhost:5000,127.0.0.1:5000,192.168.1.*
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlartifacts:/mlartifacts
+    depends_on:
+      mlflow-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:?MLFLOW_DB_PASSWORD manquant, voir .env.example}
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mlflow-pgdata:
+  mlartifacts:
