@@ -1,3 +1,3 @@
 # Exceptions au scan de secrets (gitleaks), une par ligne, chacune justifiée.
 # Faux secret volontaire de l'exercice d'audit Docker (S2) : il doit rester visible pour l'exercice.
-61e2a9d97b1a1b57329b2b6a13c5e35dfc67f8f7:exercices/s2_audit/Dockerfile.ia:generic-api-key:20
+883c7f0b3c9ea93cd6fe72d02210e313a701e881:exercices/s2_audit/Dockerfile.ia:generic-api-key:20
