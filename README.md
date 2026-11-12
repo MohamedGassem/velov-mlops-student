@@ -15,6 +15,7 @@ Chaque étape du cours correspond à un tag git. Absent ou bloqué : repartez du
 | `s1-end` | Modèle v0 servi par FastAPI, tests pytest |
 | `s2-end` | Image Docker multi-stage, compose API + PostgreSQL, journalisation des prédictions |
 | `s3-end` | Pipeline : collecte bronze, dbt silver et gold sur DuckDB, contrat Pandera, flow Prefect |
+| `s4-end` | Suivi MLflow, registre (alias champion / challenger), promotion, export, CI GitHub Actions |
 
 ```bash
 git checkout s1-end          # récupérer l'état de fin de S1
@@ -33,7 +34,7 @@ pip install -e .                     # rend le package velov importable
 
 python -m velov.data                 # génère data/velov_history.csv (simulateur, seed fixe)
 python -m velov.train                # entraîne et écrit models/model.joblib + models/metadata.json
-python -m velov.train --mlflow       # idem + journalisation MLflow (puis : mlflow ui)
+python -m velov.train --mlflow       # idem + run tracé dans MLflow (voir « MLflow (S4) »)
 pytest                               # tests
 uvicorn velov.api.main:app --reload  # API sur http://127.0.0.1:8000/docs (--reload : en dev uniquement)
 ```
@@ -82,6 +83,23 @@ python -m velov.flow                              # les trois étapes orchestré
 dbt est le seul écrivain de `data/velov.duckdb` : le reste ouvre la base en lecture seule.
 Collecte continue sur la VM : voir l'en-tête de `src/velov/ingest.py` (crontab, toutes les 5 minutes).
 
+## MLflow (S4)
+
+```bash
+# même PostgreSQL que l'API (service db), base dédiée "mlflow" ; aucun nouveau secret
+docker compose -f compose.yaml -f compose.mlflow.yaml up -d --build  # http://<ip-vm>:5000
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000    # sans serveur : sqlite:///mlflow.db
+
+python -m velov.train --version 0.1.0 --register    # run tracé + version "challenger"
+python -m velov.promote                             # décision, sans rien changer
+python -m velov.promote --apply                     # déplace l'alias "champion" si la règle est remplie
+python -m velov.export --alias champion --out models/
+./scripts/release.sh                                # sur la VM : export, build, redémarrage de l'API
+```
+
+La règle de promotion et la livraison du modèle sont justifiées dans `src/velov/promote.py`
+et `docs/adr/0002-livraison-du-modele.md`. La CI est dans `.github/workflows/ci.yml`.
+
 ## Structure
 
 ```
@@ -91,11 +109,16 @@ src/velov/
   ingest.py        collecte du flux GBFS vers data/bronze, idempotente (S3)
   contract.py      contrat Pandera de la table d'entraînement (S3)
   flow.py          flow Prefect : ingestion, dbt, contrat (S3)
-  train.py         entraînement, baseline, artefact + metadata.json, option MLflow
+  train.py         entraînement, baseline, paquet model.joblib + metadata.json
+  tracking.py      run MLflow, registre, alias (S4)
+  promote.py       règle de promotion challenger / champion (S4)
+  export.py        version du registre -> models/ avant le build (S4)
+  retrain.py       réentraînement : entraîner, enregistrer, décider (S4)
   api/main.py      FastAPI : /health, /ready, /v1/model, /v1/predict, /v1/predict/batch
   api/schemas.py   contrat d'entrée / sortie (Pydantic)
   api/storage.py   journalisation des prédictions (S2)
-tests/             pytest (features, API)
+tests/             pytest (features, API, ingestion, contrat, qualité du modèle, registre)
+.github/workflows/ CI : lint, tests, scan de secrets, build et /ready de l'image (S4)
 docs/              templates : model card, runbook, ADR
 velov_dbt/         projet dbt : silver (stg_*), gold (station_hourly), tests, contrat (S3)
 data/fixtures/     bronze de démonstration, régénérable avec scripts/make_fixtures.py (S3)

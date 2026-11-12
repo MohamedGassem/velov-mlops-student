@@ -20,6 +20,9 @@ qui dit oui ou non.
 | EX-10 | Rejouer le pipeline sur une même période ne change pas la table gold | Deux runs successifs : même nombre de lignes, aucun doublon sur (station_id, timestamp) | S3 |
 | EX-11 | Aucune feature n'utilise une information postérieure à l'instant de prédiction | Revue du SQL gold et de `features.py` ; justification dans la model card | S3, S4 |
 | EX-12 | Une table gold qui viole le contrat n'est jamais publiée | Contrat dbt enforced, tests bloquants, validation Pandera avant l'entraînement | S3 |
+| EX-13 | Le modèle servi est retrouvable jusqu'à son code et ses données | `GET /v1/model` donne la version du registre et le run ; le run porte le commit, l'empreinte des données, les paramètres et les métriques | S4 |
+| EX-14 | Un modèle n'est promu que s'il bat le champion et la persistance sur la même fenêtre récente | Sortie de `velov.promote` ; tag `promotion` sur la version promue ; alias `previous-champion` pour le retour arrière | S4 |
+| EX-15 | Aucun changement n'arrive sur `main` sans CI au vert | Workflow `ci` : lint, tests (dont EX-05), scan de secrets, build et `/ready` de l'image ; protection de branche sur `main` | S4 |
 
 ## Conventions associées
 

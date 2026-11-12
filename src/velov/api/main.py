@@ -59,7 +59,7 @@ def load_model(model_dir: Path) -> tuple[object, dict]:
     metadata_path = model_dir / METADATA_FILENAME
     if not metadata_path.exists():
         raise FileNotFoundError(f"{metadata_path} introuvable")
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = json.loads(metadata_path.read_text())
     model_path = model_dir / metadata["artifact"]["file"]
     actual = sha256_of(model_path)
     if actual != metadata["artifact"]["sha256"]:
