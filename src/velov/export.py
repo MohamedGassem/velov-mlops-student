@@ -35,7 +35,7 @@ def export(alias: str, out_dir: Path) -> dict:
 
     with tempfile.TemporaryDirectory() as tmp:
         local = Path(mlflow.artifacts.download_artifacts(run_id=version.run_id, artifact_path="package", dst_path=tmp))
-        metadata = json.loads((local / METADATA_FILENAME).read_text())
+        metadata = json.loads((local / METADATA_FILENAME).read_text(encoding="utf-8"))
         model_file = local / metadata["artifact"]["file"]
         if sha256_of(model_file) != metadata["artifact"]["sha256"]:
             raise RuntimeError(f"Empreinte invalide pour la version {version.version} : export refusé")
@@ -49,7 +49,7 @@ def export(alias: str, out_dir: Path) -> dict:
         }
         out_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(model_file, out_dir / model_file.name)
-        (out_dir / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2, ensure_ascii=False))
+        (out_dir / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     return metadata
 
 

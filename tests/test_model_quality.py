@@ -41,6 +41,13 @@ def test_metadata_traces_data_and_params(trained):
     json.dumps(metadata)  # sérialisable tel quel
 
 
+def test_metadata_is_utf8(trained, tmp_path):
+    """metadata.json entraîné sous Windows doit rester lisible dans l'image Linux (UTF-8)."""
+    data_path, _ = trained
+    train(data_path, tmp_path, version="0.0.0-ci", test_days=7)
+    json.loads((tmp_path / "metadata.json").read_bytes().decode("utf-8"))
+
+
 def test_training_refuses_naive_timestamps(tmp_path):
     df = simulate(days=5, n_stations=2, seed=0)
     df["timestamp"] = df["timestamp"].dt.tz_localize(None)
