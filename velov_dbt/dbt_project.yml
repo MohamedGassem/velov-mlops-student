@@ -1,0 +1,12 @@
+name: velov
+version: "1.0.0"
+config-version: 2
+
+profile: velov
+
+model-paths: ["models"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  velov:
+    +materialized: view
