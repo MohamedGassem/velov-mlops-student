@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: velov_user
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant : Crée un fichier .env}"
+      POSTGRES_DB: velov_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U velov_user -d velov_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+psycopg://velov_user:${POSTGRES_PASSWORD}@db:5432/velov_db"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

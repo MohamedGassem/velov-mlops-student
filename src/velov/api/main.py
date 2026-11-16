@@ -27,6 +27,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from velov.api.database import initialise_database, save_prediction
 from velov.api.schemas import (  # noqa: F401
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
     """Fourni : exécuté une fois au démarrage (avant yield) et à l'arrêt (après yield)."""
     model_dir = Path(os.getenv("MODEL_DIR", "models"))
     try:
+        initialise_database()
         STATE["model"], STATE["metadata"] = load_model(model_dir)
         logger.info("Modèle %s chargé", STATE["metadata"]["model_version"])
     except Exception:
@@ -108,11 +110,17 @@ def predict(payload: PredictionRequest):
     raw = pd.DataFrame([payload.model_dump()])
     X = add_features(raw)[FEATURES]
     y = min(max(STATE["model"].predict(X)[0], 0), payload.capacity)
+    target_timestamp = payload.timestamp + timedelta(hours=1)
+    predicted_bikes = float(round(y, 2))
+    model_version = STATE["metadata"]["model_version"]
+
+    save_prediction(payload, target_timestamp, predicted_bikes, model_version)
+
     return PredictionResponse(
         station_id=payload.station_id,
-        target_timestamp=payload.timestamp + timedelta(hours=1),
-        predicted_bikes=float(round(y,2)),
-        model_version=STATE["metadata"]["model_version"],
+        target_timestamp=target_timestamp,
+        predicted_bikes=predicted_bikes,
+        model_version=model_version,
     )
 # tp1 p5 STRETCH
 @app.post("/v1/predict/batch", response_model=BatchPredictionResponse)
