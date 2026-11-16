@@ -4,4 +4,4 @@ velov:
     dev:
       type: duckdb
       path: ../data/velov.duckdb
-      threads: 4
+      threads: 1

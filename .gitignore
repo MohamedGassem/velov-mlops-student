@@ -14,3 +14,7 @@ mlruns/
 
 # Secrets
 .env
+
+# dbt outputs are regenerated locally
+velov_dbt/logs/
+velov_dbt/target/

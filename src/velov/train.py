@@ -16,9 +16,12 @@ import argparse
 import hashlib
 import json
 import platform
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+import duckdb
 import joblib
 import numpy as np
 import pandas as pd
@@ -29,6 +32,7 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from velov.contracts import validate_station_hourly
 from velov.features import (
     CATEGORICAL_FEATURES,
     FEATURES,
@@ -70,6 +74,27 @@ def temporal_split(df: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.D
     if train.empty or test.empty:
         raise ValueError("Split vide : augmenter l'historique ou réduire test_days")
     return train, test
+
+
+def load_gold_training_data(database_path: Path) -> pd.DataFrame:
+    """Read the dbt gold table and validate its contract before training."""
+    if not database_path.exists():
+        raise FileNotFoundError(f"{database_path} introuvable : lancer `dbt build` d'abord")
+    connection = duckdb.connect(str(database_path), read_only=True)
+    try:
+        gold = connection.sql(
+            """
+            select station_id, timestamp, capacity, bikes_available, temperature, is_raining
+            from main.station_hourly
+            order by station_id, timestamp
+            """
+        ).df()
+    finally:
+        connection.close()
+    if gold.empty:
+        raise ValueError("La table gold station_hourly est vide")
+    gold["timestamp"] = pd.to_datetime(gold["timestamp"], utc=True)
+    return validate_station_hourly(gold)
 
 
 def train(
@@ -116,6 +141,12 @@ def train(
             "n_train": int(len(train_df)),
             "n_test": int(len(test_df)),
         },
+        "parameters": {
+            "seed": seed,
+            "learning_rate": 0.1,
+            "max_iter": 200,
+            "test_days": test_days,
+        },
         "artifact": {"file": MODEL_FILENAME, "sha256": sha256_of(model_path)},
         "data_sha256": sha256_of(data_path),
         "runtime": {
@@ -151,10 +182,33 @@ def log_to_mlflow(metadata: dict, out_dir: Path) -> None:
         )
     )[FEATURES]
 
+    try:
+        git = shutil.which("git")
+        if git is None:
+            raise FileNotFoundError("git introuvable")
+        commit = subprocess.check_output(  # noqa: S603
+            [git, "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+        dirty = bool(
+            subprocess.check_output(  # noqa: S603
+                [git, "status", "--porcelain"], text=True
+            ).strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        commit, dirty = "unknown", True
+
     mlflow.set_experiment("velov-availability")
     with mlflow.start_run(run_name=f"v{metadata['model_version']}"):
-        mlflow.log_params({"model": "HistGradientBoostingRegressor", "test_days": metadata["metrics"]["test_days"]})
+        mlflow.log_params({"model": "HistGradientBoostingRegressor", **metadata["parameters"]})
         mlflow.log_metrics({k: v for k, v in metadata["metrics"].items() if k.startswith("mae")})
+        mlflow.set_tags(
+            {
+                "git_commit": commit,
+                "git_dirty": str(dirty).lower(),
+                "data_sha256": metadata["data_sha256"],
+            }
+        )
+        mlflow.log_artifact(out_dir / METADATA_FILENAME)
         mlflow.sklearn.log_model(
             pipeline,
             name="model",
@@ -171,12 +225,36 @@ def log_to_mlflow(metadata: dict, out_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Entraîne le modèle Vélo'v v0.")
     parser.add_argument("--data", type=Path, default=Path("data/velov_history.csv"))
+    parser.add_argument("--gold-db", type=Path, help="Lire main.station_hourly dans DuckDB")
     parser.add_argument("--out", type=Path, default=Path("models"))
     parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--test-days", type=int, default=14)
     parser.add_argument("--mlflow", action="store_true", help="journaliser aussi dans MLflow")
     args = parser.parse_args()
 
-    metadata = train(args.data, args.out, version=args.version)
+    if args.gold_db:
+        gold = load_gold_training_data(args.gold_db)
+        temporary_data = args.gold_db.with_name("gold-training-data.csv")
+        gold.to_csv(temporary_data, index=False)
+        try:
+            metadata = train(
+                temporary_data,
+                args.out,
+                version=args.version,
+                seed=args.seed,
+                test_days=args.test_days,
+            )
+        finally:
+            temporary_data.unlink(missing_ok=True)
+    else:
+        metadata = train(
+            args.data,
+            args.out,
+            version=args.version,
+            seed=args.seed,
+            test_days=args.test_days,
+        )
     m = metadata["metrics"]
     print(f"MAE modèle   : {m['mae_model']:.3f} vélos")
     print(f"MAE baseline : {m['mae_baseline_persistence']:.3f} vélos (persistance)")

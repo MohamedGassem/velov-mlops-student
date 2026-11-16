@@ -1,0 +1,49 @@
+services:
+  mlflow-db-init:
+    image: postgres:17-alpine
+    environment:
+      PGHOST: db
+      PGUSER: velov_user
+      PGDATABASE: velov_db
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant : crée un fichier .env}"
+    command:
+      - sh
+      - -c
+      - >
+        psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'mlflow'" | grep -q 1
+        || psql -c "CREATE DATABASE mlflow"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  mlflow:
+    build:
+      context: docker
+      dockerfile: mlflow.Dockerfile
+    environment:
+      MLFLOW_BACKEND_STORE_URI: "postgresql+psycopg://velov_user:${POSTGRES_PASSWORD}@db:5432/mlflow"
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --workers
+      - "2"
+      - --artifacts-destination
+      - /mlartifacts
+      - --allowed-hosts
+      - localhost:5000,127.0.0.1:5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlartifacts:/mlartifacts
+    depends_on:
+      mlflow-db-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  mlartifacts:
