@@ -12,6 +12,7 @@ TODO 9 [Should] : en ajouter d'autres, par exemple :
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+
 from velov.api.main import app
 
 
@@ -44,4 +45,16 @@ def test_predict_rejects_unknown_field(client, valid_payload):
 
 def test_predict_rejects_timestamp_without_timezone(client, valid_payload):
     r = client.post("/v1/predict", json={**valid_payload, "timestamp": "2026-10-07T08:00:00"})
+    assert r.status_code == 422
+
+
+def test_predict_rejects_nan_without_a_server_error(client, valid_payload):
+    r = client.post(
+        "/v1/predict",
+        content=(
+            '{"station_id":2,"timestamp":"2026-10-06T08:00:00+02:00",'
+            '"capacity":20,"bikes_available":12,"temperature":NaN,"is_raining":false}'
+        ),
+        headers={"Content-Type": "application/json"},
+    )
     assert r.status_code == 422

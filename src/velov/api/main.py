@@ -18,19 +18,23 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
-
-from velov.api.schemas import PredictionRequest, PredictionResponse, BatchPredictionRequest, BatchPredictionResponse  # noqa: F401
-from velov.features import FEATURES, add_features  # noqa: F401
-from velov.train import METADATA_FILENAME, sha256_of
-
-# TODO 7
-from datetime import timedelta
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+from velov.api.schemas import (  # noqa: F401
+    BatchPredictionRequest,
+    BatchPredictionResponse,
+    PredictionRequest,
+    PredictionResponse,
+)
+from velov.features import FEATURES, add_features  # noqa: F401
+from velov.train import METADATA_FILENAME, sha256_of
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("velov.api")
@@ -66,6 +70,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Vélo'v availability API", version="1.0.0", lifespan=lifespan)
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_, exc: RequestValidationError) -> JSONResponse:
+    """Return a JSON-safe 422 response even when the rejected input contains NaN."""
+    errors = [{"loc": error["loc"], "msg": error["msg"]} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
 # TODO 5 [Should] : GET /health -> {"status": "ok"}
 @app.get("/health")
 def health():
@@ -93,7 +104,7 @@ def ready():
 def predict(payload: PredictionRequest):
     if STATE["model"] is None:
         raise HTTPException(status_code=503, detail="Modèle non chargé")
-    
+
     raw = pd.DataFrame([payload.model_dump()])
     X = add_features(raw)[FEATURES]
     y = min(max(STATE["model"].predict(X)[0], 0), payload.capacity)
@@ -115,7 +126,7 @@ def predict_batch(payload: BatchPredictionRequest):
 
     predictions = []
 
-    for item, y in zip(payload.items, ys):
+    for item, y in zip(payload.items, ys, strict=True):
         y = min(max(y, 0), item.capacity)
 
         predictions.append(
@@ -134,7 +145,4 @@ def predict_batch(payload: BatchPredictionRequest):
 def model():
     if STATE["model"] is None:
         raise HTTPException(status_code=503, detail="Modèle non chargé")
-    else:
-        return {"model_version": STATE["metadata"]["model_version"]}
-
-    
+    return {"model_version": STATE["metadata"]["model_version"]}
