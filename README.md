@@ -100,6 +100,17 @@ python -m velov.export --alias champion --out models/
 La règle de promotion et la livraison du modèle sont justifiées dans `src/velov/promote.py`
 et `docs/adr/0002-livraison-du-modele.md`. La CI est dans `.github/workflows/ci.yml`.
 
+## Test de charge (S5)
+
+Fournis pour le TP5 : `loadtest/` (scénario Locust, paliers, résumé) et les fichiers `requirements-*.txt`.
+
+```bash
+# depuis le POSTE, vers l'API sur la VM (jamais depuis la machine qui sert l'API)
+pip install -r requirements-loadtest.txt
+./loadtest/paliers.sh http://<ip-vm>:8000 w1      # échauffement, puis 10, 25, 50, 100, 150 usagers
+python loadtest/summary.py results/w1 --markdown  # p50, p95, p99, débit, erreurs, capacité sous le SLO
+```
+
 ## Structure
 
 ```
