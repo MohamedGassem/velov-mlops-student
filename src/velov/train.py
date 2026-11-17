@@ -21,7 +21,6 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-import duckdb
 import joblib
 import numpy as np
 import pandas as pd
@@ -32,7 +31,6 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from velov.contracts import validate_station_hourly
 from velov.features import (
     CATEGORICAL_FEATURES,
     FEATURES,
@@ -78,6 +76,9 @@ def temporal_split(df: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.D
 
 def load_gold_training_data(database_path: Path) -> pd.DataFrame:
     """Read the dbt gold table and validate its contract before training."""
+    import duckdb
+    from velov.contracts import validate_station_hourly
+
     if not database_path.exists():
         raise FileNotFoundError(f"{database_path} introuvable : lancer `dbt build` d'abord")
     connection = duckdb.connect(str(database_path), read_only=True)

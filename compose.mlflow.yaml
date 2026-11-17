@@ -35,9 +35,9 @@ services:
       - --artifacts-destination
       - /mlartifacts
       - --allowed-hosts
-      - localhost:5000,127.0.0.1:5000
+      - localhost:5001,127.0.0.1:5001
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - mlartifacts:/mlartifacts
     depends_on:
