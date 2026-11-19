@@ -21,3 +21,7 @@ mlruns/
 velov_dbt/target/
 velov_dbt/logs/
 velov_dbt/dbt_packages/
+
+# Exploitation (S6) : la clé TLS ne quitte jamais la VM ; les rapports Evidently se régénèrent
+certs/
+reports/
