@@ -12,6 +12,7 @@ Horodatage : les timestamps entrants doivent porter un fuseau ; ils sont normali
 
 Configuration (variables d'environnement, jamais en dur dans le code) :
     MODEL_DIR     dossier contenant model.joblib et metadata.json (défaut : models)
+    MODEL_FORMAT  joblib (défaut) ou onnx, après python -m velov.export_onnx (S5)
     DATABASE_URL  optionnel ; si défini, chaque prédiction est journalisée (S2)
 
 Lancement :
@@ -67,12 +68,41 @@ def load_model(model_dir: Path) -> tuple[object, dict]:
     return joblib.load(model_path), metadata
 
 
+def load_engine(model_dir: Path) -> tuple[object, dict]:
+    """Charge le moteur choisi par MODEL_FORMAT : joblib (défaut) ou onnx (S5).
+
+    Les deux exposent predict(DataFrame). Pour ONNX, l'empreinte du fichier .onnx est vérifiée
+    comme celle du joblib ; l'export (velov.export_onnx) l'a écrite dans metadata.json.
+    """
+    fmt = os.getenv("MODEL_FORMAT", "joblib")
+    if fmt == "joblib":
+        model, metadata = load_model(model_dir)
+    elif fmt == "onnx":
+        metadata = json.loads((model_dir / METADATA_FILENAME).read_text(encoding="utf-8"))
+        if "onnx" not in metadata:
+            raise RuntimeError("metadata.json sans section onnx : lancer python -m velov.export_onnx")
+        onnx_path = model_dir / metadata["onnx"]["file"]
+        if sha256_of(onnx_path) != metadata["onnx"]["sha256"]:
+            raise RuntimeError(f"Empreinte invalide pour {onnx_path} : artefact modifié ou corrompu")
+        from velov.export_onnx import OnnxPredictor  # onnxruntime n'est importé que si on le sert
+
+        model = OnnxPredictor(onnx_path)
+    else:
+        raise ValueError(f"MODEL_FORMAT inconnu : {fmt!r} (joblib ou onnx)")
+    return model, {**metadata, "served_format": fmt}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     model_dir = Path(os.getenv("MODEL_DIR", "models"))
     try:
-        STATE["model"], STATE["metadata"] = load_model(model_dir)
-        logger.info("Modèle %s chargé depuis %s", STATE["metadata"]["model_version"], model_dir)
+        STATE["model"], STATE["metadata"] = load_engine(model_dir)
+        logger.info(
+            "Modèle %s chargé depuis %s (%s)",
+            STATE["metadata"]["model_version"],
+            model_dir,
+            STATE["metadata"]["served_format"],
+        )
     except Exception:
         # Le process démarre quand même : /health répond, /ready signale le problème.
         logger.exception("Échec du chargement du modèle depuis %s", model_dir)

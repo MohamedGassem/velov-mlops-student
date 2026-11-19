@@ -16,6 +16,7 @@ Chaque étape du cours correspond à un tag git. Absent ou bloqué : repartez du
 | `s2-end` | Image Docker multi-stage, compose API + PostgreSQL, journalisation des prédictions |
 | `s3-end` | Pipeline : collecte bronze, dbt silver et gold sur DuckDB, contrat Pandera, flow Prefect |
 | `s4-end` | Suivi MLflow, registre (alias champion / challenger), promotion, export, CI GitHub Actions |
+| `s5-end` | Test de charge Locust, décomposition de la latence, export ONNX vérifié, quantization de DistilBERT |
 
 ```bash
 git checkout s1-end          # récupérer l'état de fin de S1
@@ -100,16 +101,28 @@ python -m velov.export --alias champion --out models/
 La règle de promotion et la livraison du modèle sont justifiées dans `src/velov/promote.py`
 et `docs/adr/0002-livraison-du-modele.md`. La CI est dans `.github/workflows/ci.yml`.
 
-## Test de charge (S5)
-
-Fournis pour le TP5 : `loadtest/` (scénario Locust, paliers, résumé) et les fichiers `requirements-*.txt`.
+## Serving sous charge et optimisation (S5)
 
 ```bash
 # depuis le POSTE, vers l'API sur la VM (jamais depuis la machine qui sert l'API)
 pip install -r requirements-loadtest.txt
 ./loadtest/paliers.sh http://<ip-vm>:8000 w1      # échauffement, puis 10, 25, 50, 100, 150 usagers
 python loadtest/summary.py results/w1 --markdown  # p50, p95, p99, débit, erreurs, capacité sous le SLO
+
+# où passe le temps d'une prédiction (sans réseau)
+python scripts/bench_predict.py --n 500 --batch 1 100 1000
+
+# même modèle en ONNX : export refusé si une prédiction s'écarte de plus de 0,001 vélo
+pip install -r requirements-optim.txt
+python -m velov.export_onnx
+MODEL_FORMAT=onnx uvicorn velov.api.main:app --host 0.0.0.0 --port 8000
+
+# TP5a, en local : DistilBERT float32 contre int8 (taille, latence, précision sur SST-2)
+python scripts/bench_quantization.py
 ```
+
+SLO, capacité mesurée et critères de retour arrière : `docs/runbook.md` (EX-16, EX-18).
+Choix du moteur d'inférence et son triplet mesuré : `docs/adr/0003-moteur-inference.md` (EX-17).
 
 ## Structure
 
@@ -121,6 +134,7 @@ src/velov/
   contract.py      contrat Pandera de la table d'entraînement (S3)
   flow.py          flow Prefect : ingestion, dbt, contrat (S3)
   train.py         entraînement, baseline, paquet model.joblib + metadata.json
+  export_onnx.py   export ONNX vérifié ligne à ligne, servi avec MODEL_FORMAT=onnx (S5)
   tracking.py      run MLflow, registre, alias (S4)
   promote.py       règle de promotion challenger / champion (S4)
   export.py        version du registre -> models/ avant le build (S4)
@@ -128,12 +142,14 @@ src/velov/
   api/main.py      FastAPI : /health, /ready, /v1/model, /v1/predict, /v1/predict/batch
   api/schemas.py   contrat d'entrée / sortie (Pydantic)
   api/storage.py   journalisation des prédictions (S2)
-tests/             pytest (features, API, ingestion, contrat, qualité du modèle, registre)
+tests/             pytest (features, API, ingestion, contrat, qualité du modèle, registre, ONNX)
+loadtest/          test de charge Locust, paliers, résumé (S5)
+scripts/           benchmarks de latence et de quantization (S5), release, fixtures
 .github/workflows/ CI : lint, tests, scan de secrets, build et /ready de l'image (S4)
 docs/              templates : model card, runbook, ADR
 velov_dbt/         projet dbt : silver (stg_*), gold (station_hourly), tests, contrat (S3)
 data/fixtures/     bronze de démonstration, régénérable avec scripts/make_fixtures.py (S3)
-exercices/         démo pickle (S1), audit, debug et conformité Docker (S2), audit SQL (S3)
+exercices/         démo pickle (S1), audit, debug et conformité Docker (S2), audit SQL (S3), audit d'un test de charge (S5)
 ```
 
 ## Usage de l'IA générative

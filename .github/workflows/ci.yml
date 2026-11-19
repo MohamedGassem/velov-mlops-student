@@ -26,13 +26,13 @@ jobs:
           cache-dependency-path: requirements*.txt
       - name: Dépendances
         run: |
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.txt -r requirements-optim.txt
           pip install -e .
       - name: Lint et format
         run: |
           ruff check .
           ruff format --check .
-      - name: Tests (code, contrat d'API, modèle, registre)
+      - name: Tests (code, contrat d'API, modèle, registre, export ONNX)
         env:
           MLFLOW_DISABLE_TELEMETRY: "true"
         run: pytest
